@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Booking confirmed</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <script defer src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="plain-page">
+  <main class="success-page">
+    {% set popup_messages = [] %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        {% if category in ['error', 'warning'] %}
+          {% set _ = popup_messages.append((category, message)) %}
+        {% else %}
+          <div class="notice {{ category }}">{{ message }}</div>
+        {% endif %}
+      {% endfor %}
+    {% endwith %}
+    {% if popup_messages %}
+      <div class="alert-popup is-open" id="alertPopup" role="alertdialog" aria-modal="true" aria-labelledby="alertPopupTitle">
+        <div class="alert-popup-card {{ popup_messages[0][0] }}">
+          <button class="alert-popup-close" type="button" aria-label="Close alert" data-popup-close>&times;</button>
+          <p class="eyebrow" id="alertPopupTitle">{{ 'Warning' if popup_messages[0][0] == 'warning' else 'Error' }}</p>
+          {% for category, message in popup_messages %}
+            <p class="alert-popup-message">{{ message }}</p>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
+    <section class="confirmation-panel">
+      <p class="eyebrow">Booking confirmed</p>
+      <h1>{{ booking.booking_reference }}</h1>
+      <p>Your kayak booking has been saved. Keep this reference for your trip.</p>
+
+      <dl class="booking-details">
+        <div><dt>Kayak</dt><dd>{{ booking.kayak_name }}</dd></div>
+        <div><dt>Name</dt><dd>{{ booking.customer_name }}</dd></div>
+        <div><dt>Email</dt><dd>{{ booking.customer_email }}</dd></div>
+        <div><dt>Phone</dt><dd>{{ booking.customer_phone or 'Not provided' }}</dd></div>
+        <div><dt>Booking date</dt><dd>{{ display_booking_date(booking) }}</dd></div>
+        <div><dt>Total</dt><dd>Rs {{ booking.total_price }}</dd></div>
+        <div><dt>Email alert</dt><dd>{{ booking.email_status|capitalize }}</dd></div>
+      </dl>
+
+      <div class="actions">
+        <a class="button primary" href="{{ url_for('index') }}"><i data-lucide="arrow-left"></i>Back to site</a>
+        <button class="button disabled" type="button" disabled><i data-lucide="credit-card"></i>Pay online soon</button>
+      </div>
+    </section>
+  </main>
+  <script>window.addEventListener("load", () => window.lucide && window.lucide.createIcons());</script>
+</body>
+</html>

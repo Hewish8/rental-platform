@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Owner bookings</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body class="plain-page">
+  <main class="admin-page">
+    <header class="admin-header">
+      <div>
+        <p class="eyebrow">Owner dashboard</p>
+        <h1>Bookings</h1>
+      </div>
+      <a class="button primary" href="{{ url_for('index') }}">View website</a>
+    </header>
+
+    {% set popup_messages = [] %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        {% if category in ['error', 'warning'] %}
+          {% set _ = popup_messages.append((category, message)) %}
+        {% else %}
+          <div class="notice {{ category }}">{{ message }}</div>
+        {% endif %}
+      {% endfor %}
+    {% endwith %}
+    {% if popup_messages %}
+      <div class="alert-popup is-open" id="alertPopup" role="alertdialog" aria-modal="true" aria-labelledby="alertPopupTitle">
+        <div class="alert-popup-card {{ popup_messages[0][0] }}">
+          <button class="alert-popup-close" type="button" aria-label="Close alert" data-popup-close>&times;</button>
+          <p class="eyebrow" id="alertPopupTitle">{{ 'Warning' if popup_messages[0][0] == 'warning' else 'Error' }}</p>
+          {% for category, message in popup_messages %}
+            <p class="alert-popup-message">{{ message }}</p>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
+    <section class="admin-tools">
+      <article class="admin-tool">
+        <p class="eyebrow">Mail server</p>
+        <h2>Test email</h2>
+        <p class="admin-muted">
+          SMTP: {{ smtp_host or 'Not configured' }}:{{ smtp_port }}
+          {% if smtp_configured %}| Ready to test{% else %}| Missing settings in .env{% endif %}
+        </p>
+        <form class="admin-form" method="post" action="{{ url_for('admin_test_email', token=admin_token) }}">
+          <label>
+            Send test to
+            <input name="test_email" type="email" value="{{ owner_email }}" placeholder="your-email@example.com">
+          </label>
+          <button class="button primary" type="submit">Send test email</button>
+        </form>
+      </article>
+
+      <article class="admin-tool">
+        <p class="eyebrow">Fleet</p>
+        <h2>{{ kayaks|length }} kayaks active</h2>
+        <p class="admin-muted">Editing a booking recalculates the total from the selected kayak price and booking date.</p>
+      </article>
+    </section>
+
+    <section class="booking-table-wrap">
+      <table class="booking-table editable-bookings">
+        <thead>
+          <tr>
+            <th>Reference</th>
+            <th>Customer</th>
+            <th>Booking date</th>
+            <th>Notes</th>
+            <th>Email</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for booking in bookings %}
+            <tr>
+              <td>
+                <strong>{{ booking.booking_reference or booking.id }}</strong>
+                <span>Created {{ booking.created_at }}</span>
+              </td>
+              <td>
+                <form id="booking-{{ booking.id }}-update" method="post" action="{{ url_for('admin_update_booking', booking_id=booking.id, token=admin_token) }}">
+                  <label>
+                    Name
+                    <input required name="customer_name" value="{{ booking.customer_name }}">
+                  </label>
+                  <label>
+                    Email
+                    <input required name="customer_email" type="email" value="{{ booking.customer_email }}">
+                  </label>
+                  <label>
+                    Phone
+                    <input name="customer_phone" value="{{ booking.customer_phone or '' }}">
+                  </label>
+                </form>
+              </td>
+              <td>
+                <label form="booking-{{ booking.id }}-update">
+                  Kayak
+                  <select name="kayak_id" form="booking-{{ booking.id }}-update">
+                    {% for kayak in kayaks %}
+                      <option value="{{ kayak.id }}" {% if kayak.id == booking.kayak_id %}selected{% endif %}>{{ kayak.name }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label form="booking-{{ booking.id }}-update">
+                  Date
+                  <input required name="booking_date" type="date" value="{{ booking.start_date }}" form="booking-{{ booking.id }}-update">
+                </label>
+                <label form="booking-{{ booking.id }}-update">
+                  Status
+                  <select name="status" form="booking-{{ booking.id }}-update">
+                    <option value="confirmed" {% if booking.status == 'confirmed' %}selected{% endif %}>confirmed</option>
+                    <option value="cancelled" {% if booking.status == 'cancelled' %}selected{% endif %}>cancelled</option>
+                  </select>
+                </label>
+                <p class="admin-total">Rs {{ booking.total_price or '-' }}</p>
+              </td>
+              <td>
+                <label form="booking-{{ booking.id }}-update">
+                  Notes
+                  <textarea name="notes" rows="6" form="booking-{{ booking.id }}-update">{{ booking.notes or '' }}</textarea>
+                </label>
+              </td>
+              <td class="email-{{ booking.email_status }}">
+                {{ booking.email_status }}
+                {% if booking.email_error %}<span title="{{ booking.email_error }}">{{ booking.email_error }}</span>{% endif %}
+              </td>
+              <td>
+                <div class="admin-actions">
+                  <button class="button primary" type="submit" form="booking-{{ booking.id }}-update">Save</button>
+                  <form method="post" action="{{ url_for('admin_delete_booking', booking_id=booking.id, token=admin_token) }}">
+                    <button class="button danger" type="submit" onclick="return confirm('Remove this booking?')">Remove</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="6">No bookings yet.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mahebourg Lagoon Kayak Rentals</title>
+  <link rel="preconnect" href="https://upload.wikimedia.org">
+  <link rel="preconnect" href="https://commons.wikimedia.org">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <script defer src="https://unpkg.com/lucide@latest"></script>
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+</head>
+<body>
+  <header class="hero" id="top">
+    <nav class="nav">
+      <a class="brand" href="#top">Mahebourg Kayak</a>
+      <div class="nav-links">
+        <a href="#fleet">Kayak</a>
+        <a href="#availability">Dates</a>
+        <a href="#booking">Book</a>
+      </div>
+    </nav>
+    <div class="hero-media" aria-hidden="true"></div>
+    <div class="hero-content">
+      <p class="eyebrow">Ile aux Aigrettes | Mouchoir Rouge | Ile aux Phares</p>
+      <h1 class="water-title" data-text="Rent a kayak on turquoise Mahebourg Lagoon.">Rent a kayak on turquoise Mahebourg Lagoon.</h1>
+      <p>Start with the beautiful south-east coast: clear water, tiny islets, lighthouse views, and an easy booking request for tourists visiting Mauritius.</p>
+      <a class="button primary" href="#availability"><i data-lucide="calendar-check"></i>Check dates</a>
+    </div>
+  </header>
+
+  <main>
+    {% set popup_messages = [] %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        {% if category in ['error', 'warning'] %}
+          {% set _ = popup_messages.append((category, message)) %}
+        {% else %}
+          <div class="notice {{ category }}">{{ message }}</div>
+        {% endif %}
+      {% endfor %}
+    {% endwith %}
+    {% if request.args.get('error') %}
+      {% set _ = popup_messages.append(('error', 'Please check the booking details. The selected kayak may already be booked.')) %}
+    {% endif %}
+    {% if not smtp_configured %}
+      {% set _ = popup_messages.append(('warning', 'Email is not configured yet. Bookings will still be saved, but real email alerts need SMTP settings in the .env file.')) %}
+    {% endif %}
+    {% if popup_messages %}
+      <div class="alert-popup is-open" id="alertPopup" role="alertdialog" aria-modal="true" aria-labelledby="alertPopupTitle">
+        <div class="alert-popup-card {{ popup_messages[0][0] }}">
+          <button class="alert-popup-close" type="button" aria-label="Close alert" data-popup-close>&times;</button>
+          <p class="eyebrow" id="alertPopupTitle">{{ 'Warning' if popup_messages[0][0] == 'warning' else 'Error' }}</p>
+          {% for category, message in popup_messages %}
+            <p class="alert-popup-message">{{ message }}</p>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
+    <section class="intro">
+      <div>
+        <p class="eyebrow">First kayak today, fleet-ready tomorrow</p>
+        <h2>Simple, scenic, and built to expand.</h2>
+      </div>
+      <p>The site currently advertises one kayak, tracks availability by date, and prevents double bookings. More kayaks and regions can be added to the same database later.</p>
+    </section>
+
+    <section class="lagoon-strip" aria-label="Mahebourg lagoon views">
+      <figure>
+        <img src="{{ url_for('assets', filename='IleAuxAigrettes.jpeg') }}" alt="Ile aux Aigrettes in turquoise Mahebourg lagoon">
+        <figcaption>Ile aux Aigrettes</figcaption>
+      </figure>
+      <figure>
+        <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/Mouchoir%20Rouge%20Mahebourg.jpg?width=1000" alt="Mouchoir Rouge islet in Mahebourg">
+        <figcaption>Mouchoir Rouge</figcaption>
+      </figure>
+      <figure>
+        <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/Leuchtturm%20%C3%8Ele%20aux%20Fouquets.jpg?width=1400" alt="Ile aux Phares lighthouse on Ile aux Fouquets">
+        <figcaption>Ile aux Phares</figcaption>
+      </figure>
+    </section>
+
+    <section class="section-grid" id="fleet">
+      <div class="section-copy">
+        <p class="eyebrow">Available kayaks</p>
+        <h2>Choose your lagoon paddle.</h2>
+        <p>Click a kayak to select it. Availability and booking details update for the selected kayak.</p>
+      </div>
+      <div class="fleet">
+        {% for kayak in kayaks %}
+          <button
+            class="kayak-card{% if loop.first %} selected{% endif %}"
+            type="button"
+            data-kayak-id="{{ kayak.id }}"
+            data-kayak-name="{{ kayak.name }}"
+            data-kayak-price="{{ kayak.price_per_day }}"
+            aria-pressed="{{ 'true' if loop.first else 'false' }}"
+          >
+            <img src="{{ kayak.image_url }}" alt="{{ kayak.name }}">
+            <div class="card-body">
+              <div>
+                <h3>{{ kayak.name }}</h3>
+                <p>{{ kayak.tagline }}</p>
+              </div>
+              <dl>
+                <div><dt>Capacity</dt><dd>{{ kayak.capacity }}</dd></div>
+                <div><dt>From</dt><dd>Rs {{ kayak.price_per_day }}/day</dd></div>
+              </dl>
+            </div>
+          </button>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="availability-section" id="availability">
+      <div class="section-copy">
+        <p class="eyebrow">Live date view</p>
+        <h2>Availability calendar</h2>
+      </div>
+      <div class="availability-toolbar">
+        <button class="icon-button" id="previousDates" type="button" aria-label="Previous dates"><i data-lucide="chevron-left"></i></button>
+        <strong id="calendarRange">Next dates</strong>
+        <button class="icon-button" id="nextDates" type="button" aria-label="Next dates"><i data-lucide="chevron-right"></i></button>
+      </div>
+      <div class="calendar-grid" id="calendarGrid" aria-live="polite"></div>
+    </section>
+
+    <section class="booking-section" id="booking">
+      <div class="booking-copy">
+        <p class="eyebrow">Real booking</p>
+        <h2>Reserve your kayak</h2>
+        <p>The booking is saved immediately, that day becomes unavailable, and email alerts are sent to both the owner and customer.</p>
+      </div>
+      <form class="booking-form" method="post" action="{{ url_for('book') }}">
+        <input type="hidden" name="kayak_id" value="{{ kayaks[0].id if kayaks else 1 }}">
+        <button class="selected-kayak" id="selectedKayakShortcut" type="button">
+          <span>Selected kayak</span>
+          <strong>
+            <b id="selectedKayakName">{{ kayaks[0].name if kayaks else 'Lagoon Explorer' }}</b>
+            <small id="selectedKayakPrice">Rs {{ kayaks[0].price_per_day if kayaks else 1200 }}/day</small>
+          </strong>
+        </button>
+        <label>
+          Full name
+          <input required name="customer_name" autocomplete="name" placeholder="Jane Visitor">
+        </label>
+        <label>
+          Email
+          <input required name="customer_email" type="email" autocomplete="email" placeholder="jane@example.com">
+        </label>
+        <label>
+          Phone or WhatsApp
+          <input name="customer_phone" autocomplete="tel" placeholder="+230 5XXX XXXX">
+        </label>
+        <label>
+          Booking date
+          <input required id="bookingDate" name="booking_date" type="date" min="{{ today }}">
+        </label>
+        <label>
+          Message
+          <textarea name="notes" rows="4" placeholder="Preferred time, hotel, or WhatsApp number"></textarea>
+        </label>
+        <div class="actions">
+          <button class="button primary" type="submit"><i data-lucide="send"></i>Confirm booking</button>
+          <button class="button disabled" type="button" disabled><i data-lucide="credit-card"></i>Pay online soon</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <footer>
+    <p>Mahebourg Lagoon Kayak Rentals | Mauritius</p>
+    <p><a href="{{ url_for('admin') }}">Owner bookings</a></p>
+    <p>Images include Wikimedia Commons media for Ile aux Aigrettes, Mouchoir Rouge by Blacadeyemi, Ile aux Fouquets by Happolati, and kayak photography by Jernej Furman.</p>
+  </footer>
+</body>
+</html>
