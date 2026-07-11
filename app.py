@@ -218,6 +218,12 @@ def migrate_db(db):
         "total_price": "ALTER TABLE bookings ADD COLUMN total_price INTEGER",
         "email_status": "ALTER TABLE bookings ADD COLUMN email_status TEXT NOT NULL DEFAULT 'pending'",
         "email_error": "ALTER TABLE bookings ADD COLUMN email_error TEXT",
+        "party_size": "ALTER TABLE bookings ADD COLUMN party_size INTEGER NOT NULL DEFAULT 1",
+        "source": "ALTER TABLE bookings ADD COLUMN source TEXT NOT NULL DEFAULT 'online'",
+        "expected_return": "ALTER TABLE bookings ADD COLUMN expected_return TEXT",
+        "checked_out_at": "ALTER TABLE bookings ADD COLUMN checked_out_at TEXT",
+        "checked_in_at": "ALTER TABLE bookings ADD COLUMN checked_in_at TEXT",
+        "cancelled_reason": "ALTER TABLE bookings ADD COLUMN cancelled_reason TEXT",
     }
     for column, statement in migrations.items():
         if column not in columns:
@@ -258,6 +264,11 @@ def display_booking_date(booking):
     return f"{booking['start_date']} to {booking['end_date']}"
 
 
+# Statuses that occupy the kayak for their dates. Cancelled and no-show
+# bookings free the dates again.
+BLOCKING_STATUSES = ("confirmed", "on_water", "returned")
+
+
 def date_range_is_available(db, kayak_id, start_date, end_date, exclude_booking_id=None):
     params = [kayak_id, end_date.isoformat(), start_date.isoformat()]
     exclude_clause = ""
@@ -269,7 +280,7 @@ def date_range_is_available(db, kayak_id, start_date, end_date, exclude_booking_
         f"""
         SELECT 1 FROM bookings
         WHERE kayak_id = ?
-          AND status = 'confirmed'
+          AND status IN ('confirmed', 'on_water', 'returned')
           AND start_date <= ?
           AND end_date >= ?
           {exclude_clause}
@@ -289,7 +300,7 @@ def booked_dates(db, kayak_id, start, end):
         """
         SELECT start_date, end_date FROM bookings
         WHERE kayak_id = ?
-          AND status = 'confirmed'
+          AND status IN ('confirmed', 'on_water', 'returned')
           AND start_date <= ?
           AND end_date >= ?
         """,
@@ -812,11 +823,20 @@ def admin_update_booking(booking_id):
 
 
 @admin_required
-def admin_delete_booking(booking_id):
+def admin_cancel_booking(booking_id):
     db = get_db()
-    db.execute("DELETE FROM bookings WHERE id = ?", (booking_id,))
+    booking = db.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    if booking is None:
+        flash("Booking not found.", "error")
+        return redirect(url_for("admin"))
+    reason = request.form.get("reason", "").strip() or "No reason recorded"
+    status = "no_show" if request.form.get("kind") == "no_show" else "cancelled"
+    db.execute(
+        "UPDATE bookings SET status = ?, cancelled_reason = ? WHERE id = ?",
+        (status, reason, booking_id),
+    )
     db.commit()
-    flash("Booking removed. The dates are available again.", "success")
+    flash(f"Booking {booking['booking_reference']} marked {status.replace('_', '-')}. The dates are available again.", "success")
     return redirect(url_for("admin"))
 
 
@@ -910,7 +930,7 @@ def create_app(config_overrides=None):
         "/admin/bookings/<int:booking_id>/update", "admin_update_booking", admin_update_booking, methods=["POST"]
     )
     app.add_url_rule(
-        "/admin/bookings/<int:booking_id>/delete", "admin_delete_booking", admin_delete_booking, methods=["POST"]
+        "/admin/bookings/<int:booking_id>/cancel", "admin_cancel_booking", admin_cancel_booking, methods=["POST"]
     )
     app.add_url_rule(
         "/admin/bookings/<int:booking_id>/resend-email", "admin_resend_email", admin_resend_email, methods=["POST"]

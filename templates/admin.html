@@ -102,8 +102,9 @@
                 <label form="booking-{{ booking.id }}-update">
                   Status
                   <select name="status" form="booking-{{ booking.id }}-update">
-                    <option value="confirmed" {% if booking.status == 'confirmed' %}selected{% endif %}>confirmed</option>
-                    <option value="cancelled" {% if booking.status == 'cancelled' %}selected{% endif %}>cancelled</option>
+                    {% for status in ['confirmed', 'on_water', 'returned', 'cancelled', 'no_show'] %}
+                      <option value="{{ status }}" {% if booking.status == status %}selected{% endif %}>{{ status.replace('_', ' ') }}</option>
+                    {% endfor %}
                   </select>
                 </label>
                 <p class="admin-total">Rs {{ booking.total_price or '-' }}</p>
@@ -125,9 +126,10 @@
               <td>
                 <div class="admin-actions">
                   <button class="button primary" type="submit" form="booking-{{ booking.id }}-update">Save</button>
-                  <form method="post" action="{{ url_for('admin_delete_booking', booking_id=booking.id) }}">
+                  <form method="post" action="{{ url_for('admin_cancel_booking', booking_id=booking.id) }}" onsubmit="return confirm('Cancel this booking? The dates become available again.')">
                     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-                    <button class="button danger" type="submit" onclick="return confirm('Remove this booking?')">Remove</button>
+                    <input name="reason" placeholder="Reason (optional)">
+                    <button class="button danger" type="submit">Cancel booking</button>
                   </form>
                 </div>
               </td>

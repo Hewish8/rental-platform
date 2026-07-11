@@ -248,10 +248,26 @@ def test_resend_email_records_failure_without_smtp(app, client, admin_client):
     assert "SMTP is not configured" in row["email_error"]
 
 
+def test_cancel_records_reason_and_frees_date(app, client, admin_client):
+    client.post("/book", data=booking_form())
+    booking_id = db_rows(app, "SELECT id FROM bookings")[0][0]
+    admin_client.post(f"/admin/bookings/{booking_id}/cancel", data={"reason": "weather"})
+    row = db_rows(app, "SELECT status, cancelled_reason FROM bookings WHERE id = ?", (booking_id,))[0]
+    assert row["status"] == "cancelled"
+    assert row["cancelled_reason"] == "weather"
+    days = client.get(f"/api/availability?kayak_id=1&start={FUTURE}&days=1").get_json()
+    assert days[0]["available"] is True
+
+
+def test_no_hard_delete_route(client):
+    # Bookings are never hard-deleted anymore.
+    assert client.post("/admin/bookings/1/delete").status_code == 404
+
+
 def test_admin_mutations_require_login(app, client):
     client.post("/book", data=booking_form())
     booking_id = db_rows(app, "SELECT id FROM bookings")[0][0]
-    assert client.post(f"/admin/bookings/{booking_id}/delete").status_code == 302
+    assert client.post(f"/admin/bookings/{booking_id}/cancel").status_code == 302
     assert client.post(f"/admin/bookings/{booking_id}/update", data=booking_form()).status_code == 302
     assert db_rows(app, "SELECT COUNT(*) FROM bookings")[0][0] == 1
 
