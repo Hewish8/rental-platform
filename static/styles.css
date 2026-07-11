@@ -1,14 +1,54 @@
 :root {
   color-scheme: light;
+
+  /* Brand palette */
   --ink: #17312d;
-  --muted: #62706d;
+  --muted: #4a5a56;
   --sea: #007b83;
   --reef: #12a0a8;
   --coral: #f05d4f;
   --sun: #ffc857;
   --foam: #f4fbf9;
+  --sand: #fbf8ef;
   --line: rgba(23, 49, 45, 0.14);
-  --shadow: 0 24px 80px rgba(15, 62, 66, 0.18);
+
+  /* Semantic roles */
+  --color-cta: var(--sun);
+  --color-cta-ink: #102926;
+  --color-interactive: var(--sea);
+  --color-danger: #b02a37;
+  --color-danger-soft: #ffe3df;
+  --color-success: #157347;
+  --color-success-soft: #dff8e8;
+  --color-warning: #946200;
+  --color-warning-soft: #fff0c2;
+  --surface: white;
+  --surface-tint: #e7f7f5;
+
+  /* Spacing scale (4px base) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+  --space-9: 6rem;
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* Elevation */
+  --shadow-rest: 0 2px 10px rgba(15, 62, 66, 0.08);
+  --shadow-raised: 0 16px 48px rgba(15, 62, 66, 0.18);
+  --shadow-overlay: 0 28px 90px rgba(5, 31, 34, 0.34);
+  --shadow: var(--shadow-raised);
+
+  /* Motion */
+  --ease-micro: 180ms ease;
 }
 
 * {
@@ -72,7 +112,7 @@ a {
 }
 
 .brand {
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0;
 }
 
@@ -94,7 +134,7 @@ a {
   margin: 0 0 0.75rem;
   color: var(--coral);
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -114,7 +154,7 @@ h1 {
   max-width: 760px;
   margin-bottom: 1rem;
   font-size: clamp(3rem, 8vw, 6.5rem);
-  line-height: 0.95;
+  line-height: 1.05;
   letter-spacing: 0;
 }
 
@@ -150,7 +190,7 @@ h1 {
 h2 {
   margin-bottom: 0.8rem;
   font-size: clamp(2rem, 4vw, 3.8rem);
-  line-height: 1;
+  line-height: 1.1;
 }
 
 h3 {
@@ -173,7 +213,7 @@ h3 {
   padding: 0.85rem 1.2rem;
   border: 0;
   border-radius: 8px;
-  font-weight: 800;
+  font-weight: 700;
   cursor: pointer;
   transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
 }
@@ -216,7 +256,7 @@ main {
   margin: 1.2rem auto 0;
   padding: 1rem;
   border-radius: 8px;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .success {
@@ -371,7 +411,7 @@ main {
   color: white;
   background: rgba(5, 49, 55, 0.72);
   font-size: 0.84rem;
-  font-weight: 850;
+  font-weight: 650;
 }
 
 .section-grid {
@@ -397,7 +437,7 @@ main {
   padding: 0;
   color: inherit;
   background: white;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-rest);
   text-align: left;
   cursor: pointer;
   animation: floatIn 700ms ease both;
@@ -407,8 +447,7 @@ main {
 .kayak-card:hover,
 .kayak-card:focus-visible {
   border-color: rgba(0, 123, 131, 0.42);
-  box-shadow: 0 28px 90px rgba(15, 62, 66, 0.23);
-  outline: 0;
+  box-shadow: var(--shadow-raised);
   transform: translateY(-3px);
 }
 
@@ -427,7 +466,7 @@ main {
   color: white;
   background: var(--sea);
   font-size: 0.72rem;
-  font-weight: 850;
+  font-weight: 650;
 }
 
 .kayak-card img {
@@ -452,13 +491,13 @@ dl {
 dt {
   color: var(--muted);
   font-size: 0.8rem;
-  font-weight: 800;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
 dd {
   margin: 0.2rem 0 0;
-  font-weight: 850;
+  font-weight: 650;
 }
 
 .availability-section {
@@ -528,7 +567,7 @@ dd {
   color: white;
   background: var(--sea);
   font-size: 0.75rem;
-  font-weight: 850;
+  font-weight: 650;
 }
 
 .booked .status-pill {
@@ -549,7 +588,7 @@ dd {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: white;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-rest);
 }
 
 .selected-kayak {
@@ -573,14 +612,13 @@ dd {
 .selected-kayak:focus-visible {
   border-color: var(--sea);
   box-shadow: 0 0 0 4px rgba(18, 160, 168, 0.16);
-  outline: 0;
   transform: translateY(-1px);
 }
 
 .selected-kayak span {
   color: var(--muted);
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 650;
   text-transform: uppercase;
 }
 
@@ -602,13 +640,13 @@ dd {
   margin-top: 0.16rem;
   color: var(--sea);
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 650;
 }
 
 label {
   display: grid;
   gap: 0.45rem;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 input,
@@ -623,9 +661,11 @@ textarea {
   font: inherit;
 }
 
-input:focus,
-textarea:focus {
-  outline: 3px solid rgba(18, 160, 168, 0.18);
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(18, 160, 168, 0.35);
+  outline-offset: 0;
   border-color: var(--reef);
 }
 
@@ -819,17 +859,17 @@ footer p {
 
 .email-sent {
   color: #157347;
-  font-weight: 850;
+  font-weight: 650;
 }
 
 .email-failed {
   color: #b02a37;
-  font-weight: 850;
+  font-weight: 650;
 }
 
 .email-pending {
   color: #946200;
-  font-weight: 850;
+  font-weight: 650;
 }
 
 @keyframes tideZoom {
@@ -930,5 +970,35 @@ footer p {
   .admin-tools,
   .admin-form {
     grid-template-columns: 1fr;
+  }
+}
+
+
+/* --- Global accessibility & motion preferences -------------------------- */
+
+a:focus-visible,
+button:focus-visible {
+  outline: 3px solid rgba(18, 160, 168, 0.55);
+  outline-offset: 2px;
+}
+
+dd,
+.admin-total,
+.selected-kayak small,
+.booking-details dd {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
