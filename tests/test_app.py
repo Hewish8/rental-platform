@@ -197,6 +197,17 @@ def test_cancelled_booking_frees_the_date(app, client):
     assert days[0]["available"] is True
 
 
+def test_resend_email_records_failure_without_smtp(app, client):
+    client.post("/book", data=booking_form())
+    booking_id = db_rows(app, "SELECT id FROM bookings")[0][0]
+    assert client.post(f"/admin/bookings/{booking_id}/resend-email").status_code == 401
+    response = client.post(f"/admin/bookings/{booking_id}/resend-email?token={ADMIN_TOKEN}")
+    assert response.status_code == 302
+    row = db_rows(app, "SELECT email_status, email_error FROM bookings WHERE id = ?", (booking_id,))[0]
+    assert row["email_status"] == "failed"
+    assert "SMTP is not configured" in row["email_error"]
+
+
 def test_admin_mutations_require_token(app, client):
     client.post("/book", data=booking_form())
     booking_id = db_rows(app, "SELECT id FROM bookings")[0][0]

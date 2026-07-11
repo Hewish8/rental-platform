@@ -2,6 +2,7 @@ import os
 import secrets
 import sqlite3
 import smtplib
+import threading
 from contextlib import closing
 from datetime import date, datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -309,6 +310,48 @@ Please keep this email. The owner will contact you directly before the rental. O
         send_email(cfg, recipient, subject, body, reply_to)
 
 
+_EMAIL_CONFIG_KEYS = (
+    "OWNER_EMAIL",
+    "FROM_EMAIL",
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_USERNAME",
+    "SMTP_PASSWORD",
+    "SMTP_USE_TLS",
+)
+
+
+def deliver_booking_emails(cfg, database, booking_id, booking, kayak):
+    """Send both booking emails and record the outcome. Safe to run in a thread."""
+    try:
+        send_booking_emails(cfg, booking, kayak)
+        status, error = "sent", None
+    except Exception as exc:
+        status, error = "failed", str(exc)
+    with closing(connect_db(database)) as db:
+        db.execute(
+            "UPDATE bookings SET email_status = ?, email_error = ? WHERE id = ?",
+            (status, error, booking_id),
+        )
+        db.commit()
+
+
+def queue_booking_emails(booking_id, booking, kayak):
+    """Send booking emails without blocking the request."""
+    cfg = {key: current_app.config[key] for key in _EMAIL_CONFIG_KEYS}
+    database = current_app.config["DATABASE"]
+    if current_app.config.get("TESTING") or not smtp_is_configured(cfg):
+        # Synchronous: deterministic in tests, and instantly marks 'failed'
+        # when SMTP is not configured instead of leaving 'pending' forever.
+        deliver_booking_emails(cfg, database, booking_id, booking, kayak)
+        return
+    threading.Thread(
+        target=deliver_booking_emails,
+        args=(cfg, database, booking_id, dict(booking), dict(kayak)),
+        daemon=True,
+    ).start()
+
+
 # --- Public routes ------------------------------------------------------
 
 
@@ -430,17 +473,10 @@ def book():
     if booking_id is None:
         return redirect(url_for("index", error="unavailable"))
 
-    try:
-        send_booking_emails(current_app.config, booking, kayak)
-        db.execute("UPDATE bookings SET email_status = 'sent', email_error = NULL WHERE id = ?", (booking_id,))
-        db.commit()
-        flash("Booking confirmed. Email notifications were sent to you and the owner.", "success")
-    except Exception as error:
-        db.execute(
-            "UPDATE bookings SET email_status = 'failed', email_error = ? WHERE id = ?",
-            (str(error), booking_id),
-        )
-        db.commit()
+    queue_booking_emails(booking_id, booking, kayak)
+    if smtp_is_configured(current_app.config):
+        flash("Booking confirmed. Your confirmation email is on its way.", "success")
+    else:
         flash("Booking confirmed, but email could not be sent. The owner can still see it in the bookings dashboard.", "warning")
 
     return redirect(url_for("booking_success", reference=booking["booking_reference"]))
@@ -575,6 +611,42 @@ def admin_delete_booking(booking_id):
     return redirect(url_for("admin", token=current_app.config["ADMIN_TOKEN"]))
 
 
+def admin_resend_email(booking_id):
+    unauthorized = require_admin()
+    if unauthorized:
+        return unauthorized
+
+    cfg = current_app.config
+    db = get_db()
+    booking = db.execute(
+        """
+        SELECT bookings.*, kayaks.name AS kayak_name
+        FROM bookings
+        JOIN kayaks ON kayaks.id = bookings.kayak_id
+        WHERE bookings.id = ?
+        """,
+        (booking_id,),
+    ).fetchone()
+    if booking is None:
+        flash("Booking not found.", "error")
+        return redirect(url_for("admin", token=cfg["ADMIN_TOKEN"]))
+
+    # Synchronous on purpose: the admin clicked the button and wants a verdict.
+    try:
+        send_booking_emails(cfg, booking, {"name": booking["kayak_name"]})
+        db.execute("UPDATE bookings SET email_status = 'sent', email_error = NULL WHERE id = ?", (booking_id,))
+        db.commit()
+        flash(f"Emails for {booking['booking_reference']} sent.", "success")
+    except Exception as error:
+        db.execute(
+            "UPDATE bookings SET email_status = 'failed', email_error = ? WHERE id = ?",
+            (str(error), booking_id),
+        )
+        db.commit()
+        flash(f"Email failed again: {error}", "error")
+    return redirect(url_for("admin", token=cfg["ADMIN_TOKEN"]))
+
+
 def admin_test_email():
     unauthorized = require_admin()
     if unauthorized:
@@ -627,6 +699,9 @@ def create_app(config_overrides=None):
     )
     app.add_url_rule(
         "/admin/bookings/<int:booking_id>/delete", "admin_delete_booking", admin_delete_booking, methods=["POST"]
+    )
+    app.add_url_rule(
+        "/admin/bookings/<int:booking_id>/resend-email", "admin_resend_email", admin_resend_email, methods=["POST"]
     )
     app.add_url_rule("/admin/test-email", "admin_test_email", admin_test_email, methods=["POST"])
 

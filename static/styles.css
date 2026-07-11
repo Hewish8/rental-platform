@@ -808,6 +808,15 @@ footer p {
   white-space: nowrap;
 }
 
+.button.resend {
+  min-height: 2.2rem;
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--line);
+  background: white;
+  font-size: 0.8rem;
+}
+
 .email-sent {
   color: #157347;
   font-weight: 850;
