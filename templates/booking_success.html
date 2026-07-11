@@ -1,10 +1,7 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 
 {% block title %}Booking confirmed{% endblock %}
-
-{% block head %}
-  <script defer src="https://unpkg.com/lucide@latest"></script>
-{% endblock %}
 
 {% block body_class %}plain-page{% endblock %}
 
@@ -28,13 +25,9 @@
       </dl>
 
       <div class="actions">
-        <a class="button primary" href="{{ url_for('index') }}"><i data-lucide="arrow-left"></i>Back to site</a>
-        <button class="button disabled" type="button" disabled><i data-lucide="credit-card"></i>Pay online soon</button>
+        <a class="button primary" href="{{ url_for('index') }}">{{ icon('arrow-left') }}Back to site</a>
+        <button class="button disabled" type="button" disabled>Pay online soon</button>
       </div>
     </section>
   </main>
-{% endblock %}
-
-{% block scripts %}
-  <script>window.addEventListener("load", () => window.lucide && window.lucide.createIcons());</script>
 {% endblock %}

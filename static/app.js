@@ -93,9 +93,6 @@ selectedKayakShortcut?.addEventListener("click", () => {
 });
 
 window.addEventListener("load", () => {
-  if (window.lucide) {
-    window.lucide.createIcons();
-  }
   loadAvailability();
 });
 

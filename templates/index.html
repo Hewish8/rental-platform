@@ -1,9 +1,9 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 
 {% block head %}
   <link rel="preconnect" href="https://upload.wikimedia.org">
   <link rel="preconnect" href="https://commons.wikimedia.org">
-  <script defer src="https://unpkg.com/lucide@latest"></script>
   <script defer src="{{ url_for('static', filename='app.js') }}"></script>
 {% endblock %}
 
@@ -22,7 +22,7 @@
       <p class="eyebrow">Ile aux Aigrettes | Mouchoir Rouge | Ile aux Phares</p>
       <h1 class="water-title" data-text="Rent a kayak on turquoise Mahebourg Lagoon.">Rent a kayak on turquoise Mahebourg Lagoon.</h1>
       <p>Start with the beautiful south-east coast: clear water, tiny islets, lighthouse views, and an easy booking request for tourists visiting Mauritius.</p>
-      <a class="button primary" href="#availability"><i data-lucide="calendar-check"></i>Check dates</a>
+      <a class="button primary" href="#availability">{{ icon('calendar-check') }}Check dates</a>
     </div>
   </header>
 
@@ -103,9 +103,9 @@
         <h2>Availability calendar</h2>
       </div>
       <div class="availability-toolbar">
-        <button class="icon-button" id="previousDates" type="button" aria-label="Previous dates"><i data-lucide="chevron-left"></i></button>
+        <button class="icon-button" id="previousDates" type="button" aria-label="Previous dates">{{ icon('chevron-left') }}</button>
         <strong id="calendarRange">Next dates</strong>
-        <button class="icon-button" id="nextDates" type="button" aria-label="Next dates"><i data-lucide="chevron-right"></i></button>
+        <button class="icon-button" id="nextDates" type="button" aria-label="Next dates">{{ icon('chevron-right') }}</button>
       </div>
       <div class="calendar-grid" id="calendarGrid" aria-live="polite"></div>
     </section>
@@ -146,8 +146,8 @@
           <textarea name="notes" rows="4" placeholder="Preferred time, hotel, or WhatsApp number"></textarea>
         </label>
         <div class="actions">
-          <button class="button primary" type="submit"><i data-lucide="send"></i>Confirm booking</button>
-          <button class="button disabled" type="button" disabled><i data-lucide="credit-card"></i>Pay online soon</button>
+          <button class="button primary" type="submit">{{ icon('send') }}Confirm booking</button>
+          <button class="button disabled" type="button" disabled>Pay online soon</button>
         </div>
       </form>
     </section>
