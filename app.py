@@ -3,11 +3,22 @@ import secrets
 import sqlite3
 import smtplib
 from contextlib import closing
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
 
-from flask import Flask, flash, g, jsonify, redirect, render_template, request, send_from_directory, url_for
+from flask import (
+    Flask,
+    current_app,
+    flash,
+    g,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    url_for,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -29,27 +40,23 @@ def load_env_file():
 
 load_env_file()
 
-OWNER_EMAIL = os.getenv("KAYAK_OWNER_EMAIL", "owner@example.com")
-FROM_EMAIL = os.getenv("KAYAK_FROM_EMAIL", OWNER_EMAIL)
-SMTP_HOST = os.getenv("KAYAK_SMTP_HOST")
-SMTP_PORT = int(os.getenv("KAYAK_SMTP_PORT", "587"))
-SMTP_USERNAME = os.getenv("KAYAK_SMTP_USERNAME")
-SMTP_PASSWORD = os.getenv("KAYAK_SMTP_PASSWORD")
-SMTP_USE_TLS = os.getenv("KAYAK_SMTP_USE_TLS", "true").lower() == "true"
-ADMIN_TOKEN = os.getenv("KAYAK_ADMIN_TOKEN", "change-me")
 DEBUG = os.getenv("KAYAK_DEBUG", "false").lower() == "true"
-
 _PLACEHOLDER_SECRETS = {"", "dev-change-me", "change-this-to-a-long-random-secret"}
-SECRET_KEY = os.getenv("KAYAK_SECRET_KEY", "")
-if SECRET_KEY in _PLACEHOLDER_SECRETS and not DEBUG:
-    raise RuntimeError(
-        "KAYAK_SECRET_KEY is not set. Generate one with "
-        "'python -c \"import secrets; print(secrets.token_urlsafe(32))\"' and put it in .env, "
-        "or set KAYAK_DEBUG=true for local development."
-    )
 
-app = Flask(__name__)
-app.config["SECRET_KEY"] = SECRET_KEY or secrets.token_urlsafe(32)
+
+def default_config():
+    return {
+        "SECRET_KEY": os.getenv("KAYAK_SECRET_KEY", ""),
+        "DATABASE": DATABASE,
+        "ADMIN_TOKEN": os.getenv("KAYAK_ADMIN_TOKEN", "change-me"),
+        "OWNER_EMAIL": os.getenv("KAYAK_OWNER_EMAIL", "owner@example.com"),
+        "FROM_EMAIL": os.getenv("KAYAK_FROM_EMAIL") or os.getenv("KAYAK_OWNER_EMAIL", "owner@example.com"),
+        "SMTP_HOST": os.getenv("KAYAK_SMTP_HOST"),
+        "SMTP_PORT": int(os.getenv("KAYAK_SMTP_PORT", "587")),
+        "SMTP_USERNAME": os.getenv("KAYAK_SMTP_USERNAME"),
+        "SMTP_PASSWORD": os.getenv("KAYAK_SMTP_PASSWORD"),
+        "SMTP_USE_TLS": os.getenv("KAYAK_SMTP_USE_TLS", "true").lower() == "true",
+    }
 
 
 DEFAULT_KAYAKS = [
@@ -77,8 +84,11 @@ DEFAULT_KAYAKS = [
 ]
 
 
-def connect_db():
-    db = sqlite3.connect(DATABASE)
+# --- Database -----------------------------------------------------------
+
+
+def connect_db(database):
+    db = sqlite3.connect(database)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys = ON")
     return db
@@ -86,19 +96,18 @@ def connect_db():
 
 def get_db():
     if "db" not in g:
-        g.db = connect_db()
+        g.db = connect_db(current_app.config["DATABASE"])
     return g.db
 
 
-@app.teardown_appcontext
 def close_db(_error):
     db = g.pop("db", None)
     if db is not None:
         db.close()
 
 
-def init_db():
-    with closing(sqlite3.connect(DATABASE)) as db:
+def init_db(database):
+    with closing(connect_db(database)) as db:
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS kayaks (
@@ -193,6 +202,9 @@ def migrate_db(db):
             seen.add(reference)
 
 
+# --- Booking helpers ----------------------------------------------------
+
+
 def generate_booking_reference():
     return f"MLK-{secrets.token_hex(5).upper()}"
 
@@ -209,10 +221,6 @@ def display_booking_date(booking):
     if booking["start_date"] == booking["end_date"]:
         return booking["start_date"]
     return f"{booking['start_date']} to {booking['end_date']}"
-
-
-def date_is_available(db, kayak_id, start_date, end_date):
-    return date_range_is_available(db, kayak_id, start_date, end_date)
 
 
 def date_range_is_available(db, kayak_id, start_date, end_date, exclude_booking_id=None):
@@ -237,31 +245,36 @@ def date_range_is_available(db, kayak_id, start_date, end_date, exclude_booking_
     return overlapping is None
 
 
-def smtp_is_configured():
-    return bool(SMTP_HOST and OWNER_EMAIL and FROM_EMAIL)
+# --- Email --------------------------------------------------------------
 
 
-def send_email(recipient, subject, body, reply_to=None):
-    if not smtp_is_configured():
-        raise RuntimeError("SMTP is not configured. Fill in KAYAK_SMTP_HOST, KAYAK_FROM_EMAIL, and KAYAK_OWNER_EMAIL in .env.")
+def smtp_is_configured(cfg):
+    return bool(cfg["SMTP_HOST"] and cfg["OWNER_EMAIL"] and cfg["FROM_EMAIL"])
+
+
+def send_email(cfg, recipient, subject, body, reply_to=None):
+    if not smtp_is_configured(cfg):
+        raise RuntimeError(
+            "SMTP is not configured. Fill in KAYAK_SMTP_HOST, KAYAK_FROM_EMAIL, and KAYAK_OWNER_EMAIL in .env."
+        )
 
     message = EmailMessage()
     message["Subject"] = subject
-    message["From"] = FROM_EMAIL
+    message["From"] = cfg["FROM_EMAIL"]
     message["To"] = recipient
     if reply_to:
         message["Reply-To"] = reply_to
     message.set_content(body)
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as smtp:
-        if SMTP_USE_TLS:
+    with smtplib.SMTP(cfg["SMTP_HOST"], cfg["SMTP_PORT"], timeout=20) as smtp:
+        if cfg["SMTP_USE_TLS"]:
             smtp.starttls()
-        if SMTP_USERNAME and SMTP_PASSWORD:
-            smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        if cfg["SMTP_USERNAME"] and cfg["SMTP_PASSWORD"]:
+            smtp.login(cfg["SMTP_USERNAME"], cfg["SMTP_PASSWORD"])
         smtp.send_message(message)
 
 
-def send_booking_emails(booking, kayak):
+def send_booking_emails(cfg, booking, kayak):
     reference = booking["booking_reference"]
     owner_subject = f"New kayak booking {reference}: {kayak['name']}"
     customer_subject = f"Your Mahebourg Lagoon kayak booking {reference}"
@@ -290,13 +303,15 @@ Please keep this email. The owner will contact you directly before the rental. O
 """.strip()
 
     for recipient, subject, body, reply_to in (
-        (OWNER_EMAIL, owner_subject, owner_body, booking["customer_email"]),
-        (booking["customer_email"], customer_subject, customer_body, OWNER_EMAIL),
+        (cfg["OWNER_EMAIL"], owner_subject, owner_body, booking["customer_email"]),
+        (booking["customer_email"], customer_subject, customer_body, cfg["OWNER_EMAIL"]),
     ):
-        send_email(recipient, subject, body, reply_to)
+        send_email(cfg, recipient, subject, body, reply_to)
 
 
-@app.route("/")
+# --- Public routes ------------------------------------------------------
+
+
 def index():
     db = get_db()
     kayaks = db.execute("SELECT * FROM kayaks WHERE active = 1").fetchall()
@@ -304,16 +319,14 @@ def index():
         "index.html",
         kayaks=kayaks,
         today=date.today().isoformat(),
-        smtp_configured=smtp_is_configured(),
+        smtp_configured=smtp_is_configured(current_app.config),
     )
 
 
-@app.route("/assets/<path:filename>")
 def assets(filename):
     return send_from_directory(BASE_DIR / "assets", filename)
 
 
-@app.route("/api/availability")
 def availability():
     db = get_db()
     try:
@@ -331,7 +344,7 @@ def availability():
     availability_days = []
     for offset in range(days):
         current = start + timedelta(days=offset)
-        available = date_is_available(db, kayak_id, current, current)
+        available = date_range_is_available(db, kayak_id, current, current)
         availability_days.append(
             {
                 "date": current.isoformat(),
@@ -343,7 +356,6 @@ def availability():
     return jsonify(availability_days)
 
 
-@app.route("/book", methods=["POST"])
 def book():
     db = get_db()
     form = request.form
@@ -360,7 +372,7 @@ def book():
         return redirect(url_for("index", error="past-date"))
 
     kayak = db.execute("SELECT * FROM kayaks WHERE id = ? AND active = 1", (kayak_id,)).fetchone()
-    if kayak is None or not date_is_available(db, kayak_id, start_date, end_date):
+    if kayak is None or not date_range_is_available(db, kayak_id, start_date, end_date):
         return redirect(url_for("index", error="unavailable"))
 
     booking = {
@@ -404,7 +416,7 @@ def book():
                     booking["end_date"],
                     booking["notes"],
                     booking["total_price"],
-                    datetime.utcnow().isoformat(timespec="seconds"),
+                    datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 ),
             )
             db.commit()
@@ -419,7 +431,7 @@ def book():
         return redirect(url_for("index", error="unavailable"))
 
     try:
-        send_booking_emails(booking, kayak)
+        send_booking_emails(current_app.config, booking, kayak)
         db.execute("UPDATE bookings SET email_status = 'sent', email_error = NULL WHERE id = ?", (booking_id,))
         db.commit()
         flash("Booking confirmed. Email notifications were sent to you and the owner.", "success")
@@ -434,7 +446,6 @@ def book():
     return redirect(url_for("booking_success", reference=booking["booking_reference"]))
 
 
-@app.route("/booking/<reference>")
 def booking_success(reference):
     db = get_db()
     booking = db.execute(
@@ -451,10 +462,14 @@ def booking_success(reference):
     return render_template("booking_success.html", booking=booking, display_booking_date=display_booking_date)
 
 
+# --- Admin routes -------------------------------------------------------
+
+
 def admin_is_authorized():
-    if ADMIN_TOKEN == "change-me" or request.args.get("token") != ADMIN_TOKEN:
+    admin_token = current_app.config["ADMIN_TOKEN"]
+    if admin_token == "change-me":
         return False
-    return True
+    return secrets.compare_digest(request.args.get("token", ""), admin_token)
 
 
 def require_admin():
@@ -463,12 +478,12 @@ def require_admin():
     return None
 
 
-@app.route("/admin")
 def admin():
     unauthorized = require_admin()
     if unauthorized:
         return unauthorized
 
+    cfg = current_app.config
     db = get_db()
     bookings = db.execute(
         """
@@ -483,20 +498,20 @@ def admin():
         "admin.html",
         bookings=bookings,
         kayaks=kayaks,
-        admin_token=ADMIN_TOKEN,
-        smtp_configured=smtp_is_configured(),
-        owner_email=OWNER_EMAIL,
-        smtp_host=SMTP_HOST,
-        smtp_port=SMTP_PORT,
+        admin_token=cfg["ADMIN_TOKEN"],
+        smtp_configured=smtp_is_configured(cfg),
+        owner_email=cfg["OWNER_EMAIL"],
+        smtp_host=cfg["SMTP_HOST"],
+        smtp_port=cfg["SMTP_PORT"],
     )
 
 
-@app.route("/admin/bookings/<int:booking_id>/update", methods=["POST"])
 def admin_update_booking(booking_id):
     unauthorized = require_admin()
     if unauthorized:
         return unauthorized
 
+    admin_token = current_app.config["ADMIN_TOKEN"]
     db = get_db()
     form = request.form
     try:
@@ -504,7 +519,7 @@ def admin_update_booking(booking_id):
         booking_date = parse_booking_date(form["booking_date"])
     except (KeyError, ValueError):
         flash("Booking could not be updated. Check the kayak and booking date.", "error")
-        return redirect(url_for("admin", token=ADMIN_TOKEN))
+        return redirect(url_for("admin", token=admin_token))
 
     start_date = booking_date
     end_date = booking_date
@@ -513,14 +528,14 @@ def admin_update_booking(booking_id):
     booking = db.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
     if kayak is None or booking is None:
         flash("Booking could not be updated because the kayak or booking was not found.", "error")
-        return redirect(url_for("admin", token=ADMIN_TOKEN))
+        return redirect(url_for("admin", token=admin_token))
 
     status = form.get("status", "confirmed")
     db.execute("BEGIN IMMEDIATE")
     if status == "confirmed" and not date_range_is_available(db, kayak_id, start_date, end_date, booking_id):
         db.rollback()
         flash("Booking could not be updated because those dates are already booked for that kayak.", "error")
-        return redirect(url_for("admin", token=ADMIN_TOKEN))
+        return redirect(url_for("admin", token=admin_token))
 
     total_price = count_days(start_date, end_date) * kayak["price_per_day"]
     db.execute(
@@ -545,10 +560,9 @@ def admin_update_booking(booking_id):
     )
     db.commit()
     flash("Booking updated.", "success")
-    return redirect(url_for("admin", token=ADMIN_TOKEN))
+    return redirect(url_for("admin", token=admin_token))
 
 
-@app.route("/admin/bookings/<int:booking_id>/delete", methods=["POST"])
 def admin_delete_booking(booking_id):
     unauthorized = require_admin()
     if unauthorized:
@@ -558,30 +572,69 @@ def admin_delete_booking(booking_id):
     db.execute("DELETE FROM bookings WHERE id = ?", (booking_id,))
     db.commit()
     flash("Booking removed. The dates are available again.", "success")
-    return redirect(url_for("admin", token=ADMIN_TOKEN))
+    return redirect(url_for("admin", token=current_app.config["ADMIN_TOKEN"]))
 
 
-@app.route("/admin/test-email", methods=["POST"])
 def admin_test_email():
     unauthorized = require_admin()
     if unauthorized:
         return unauthorized
 
-    recipient = request.form.get("test_email", "").strip() or OWNER_EMAIL
+    cfg = current_app.config
+    recipient = request.form.get("test_email", "").strip() or cfg["OWNER_EMAIL"]
     try:
         send_email(
+            cfg,
             recipient,
             "Mahebourg Kayak mail server test",
             "This is a test email from the Mahebourg Lagoon Kayak Rentals admin page.",
-            OWNER_EMAIL,
+            cfg["OWNER_EMAIL"],
         )
         flash(f"Test email sent to {recipient}.", "success")
     except Exception as error:
         flash(f"Test email failed: {error}", "error")
-    return redirect(url_for("admin", token=ADMIN_TOKEN))
+    return redirect(url_for("admin", token=cfg["ADMIN_TOKEN"]))
 
 
-init_db()
+# --- App factory --------------------------------------------------------
+
+
+def create_app(config_overrides=None):
+    app = Flask(__name__)
+    app.config.update(default_config())
+    if config_overrides:
+        app.config.update(config_overrides)
+
+    if not app.config["SECRET_KEY"]:
+        app.config["SECRET_KEY"] = "test-secret" if app.config.get("TESTING") else ""
+    if app.config["SECRET_KEY"] in _PLACEHOLDER_SECRETS and not (DEBUG or app.config.get("TESTING")):
+        raise RuntimeError(
+            "KAYAK_SECRET_KEY is not set. Generate one with "
+            "'python -c \"import secrets; print(secrets.token_urlsafe(32))\"' and put it in .env, "
+            "or set KAYAK_DEBUG=true for local development."
+        )
+
+    app.teardown_appcontext(close_db)
+
+    app.add_url_rule("/", "index", index)
+    app.add_url_rule("/assets/<path:filename>", "assets", assets)
+    app.add_url_rule("/api/availability", "availability", availability)
+    app.add_url_rule("/book", "book", book, methods=["POST"])
+    app.add_url_rule("/booking/<reference>", "booking_success", booking_success)
+    app.add_url_rule("/admin", "admin", admin)
+    app.add_url_rule(
+        "/admin/bookings/<int:booking_id>/update", "admin_update_booking", admin_update_booking, methods=["POST"]
+    )
+    app.add_url_rule(
+        "/admin/bookings/<int:booking_id>/delete", "admin_delete_booking", admin_delete_booking, methods=["POST"]
+    )
+    app.add_url_rule("/admin/test-email", "admin_test_email", admin_test_email, methods=["POST"])
+
+    init_db(app.config["DATABASE"])
+    return app
+
+
+app = create_app()
 
 
 if __name__ == "__main__":
