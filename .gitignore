@@ -5,6 +5,9 @@
 *.db
 backups/
 
+# Local tool config
+.claude/settings.local.json
+
 # Python
 __pycache__/
 *.pyc

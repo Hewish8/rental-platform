@@ -77,10 +77,16 @@ DEFAULT_KAYAKS = [
 ]
 
 
+def connect_db():
+    db = sqlite3.connect(DATABASE)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA foreign_keys = ON")
+    return db
+
+
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(DATABASE)
-        g.db.row_factory = sqlite3.Row
+        g.db = connect_db()
     return g.db
 
 
@@ -129,6 +135,12 @@ def init_db():
         )
         migrate_db(db)
         seed_kayaks(db)
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_bookings_kayak_dates ON bookings(kayak_id, start_date, end_date)"
+        )
+        db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_reference ON bookings(booking_reference)"
+        )
         db.commit()
 
 
@@ -179,6 +191,23 @@ def migrate_db(db):
     for column, statement in migrations.items():
         if column not in columns:
             db.execute(statement)
+
+    # Backfill NULL and duplicate references so the unique index can be created.
+    seen = set()
+    rows = db.execute("SELECT id, booking_reference FROM bookings ORDER BY id").fetchall()
+    for row in rows:
+        reference = row[1]
+        if reference is None or reference in seen:
+            db.execute(
+                "UPDATE bookings SET booking_reference = ? WHERE id = ?",
+                (generate_booking_reference(), row[0]),
+            )
+        else:
+            seen.add(reference)
+
+
+def generate_booking_reference():
+    return f"MLK-{secrets.token_hex(5).upper()}"
 
 
 def parse_booking_date(value):
@@ -341,7 +370,7 @@ def book():
 
     booking = {
         "kayak_id": kayak_id,
-        "booking_reference": f"MLK-{secrets.token_hex(3).upper()}",
+        "booking_reference": generate_booking_reference(),
         "customer_name": form.get("customer_name", "").strip(),
         "customer_email": form.get("customer_email", "").strip(),
         "customer_phone": form.get("customer_phone", "").strip(),
