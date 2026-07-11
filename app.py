@@ -355,15 +355,24 @@ def queue_booking_emails(booking_id, booking, kayak):
 # --- Public routes ------------------------------------------------------
 
 
-def index():
+def render_index(form_values=None, form_errors=None, status=200):
     db = get_db()
     kayaks = db.execute("SELECT * FROM kayaks WHERE active = 1").fetchall()
-    return render_template(
-        "index.html",
-        kayaks=kayaks,
-        today=date.today().isoformat(),
-        smtp_configured=smtp_is_configured(current_app.config),
+    return (
+        render_template(
+            "index.html",
+            kayaks=kayaks,
+            today=date.today().isoformat(),
+            smtp_configured=smtp_is_configured(current_app.config),
+            form_values=form_values or {},
+            form_errors=form_errors or {},
+        ),
+        status,
     )
+
+
+def index():
+    return render_index()
 
 
 def assets(filename):
@@ -399,39 +408,70 @@ def availability():
     return jsonify(availability_days)
 
 
+def validate_booking_form(db, form):
+    """Returns (values, errors, kayak, booking_date)."""
+    values = {
+        "kayak_id": form.get("kayak_id", "").strip(),
+        "booking_date": form.get("booking_date", "").strip(),
+        "customer_name": form.get("customer_name", "").strip(),
+        "customer_email": form.get("customer_email", "").strip(),
+        "customer_phone": form.get("customer_phone", "").strip(),
+        "notes": form.get("notes", "").strip(),
+    }
+    errors = {}
+
+    kayak = None
+    try:
+        kayak_id = int(values["kayak_id"])
+    except ValueError:
+        errors["kayak_id"] = "Please select a kayak."
+    else:
+        kayak = db.execute("SELECT * FROM kayaks WHERE id = ? AND active = 1", (kayak_id,)).fetchone()
+        if kayak is None:
+            errors["kayak_id"] = "That kayak is no longer available. Please pick another."
+
+    booking_date = None
+    try:
+        booking_date = parse_booking_date(values["booking_date"])
+    except ValueError:
+        errors["booking_date"] = "Please pick a valid booking date."
+    else:
+        if booking_date < date.today():
+            errors["booking_date"] = "That date has already passed. Please pick an upcoming date."
+        elif kayak is not None and not date_range_is_available(db, kayak["id"], booking_date, booking_date):
+            errors["booking_date"] = "That kayak is already booked on this date. Please pick another date."
+
+    if not values["customer_name"]:
+        errors["customer_name"] = "Please enter your full name."
+    if "@" not in values["customer_email"]:
+        errors["customer_email"] = "Please enter a valid email address."
+    if len(values["notes"]) > 2000:
+        errors["notes"] = "Please keep your message under 2000 characters."
+
+    return values, errors, kayak, booking_date
+
+
 def book():
     db = get_db()
-    form = request.form
-    try:
-        kayak_id = int(form["kayak_id"])
-        booking_date = parse_booking_date(form["booking_date"])
-    except (KeyError, ValueError):
-        return redirect(url_for("index", error="invalid-date"))
+    values, errors, kayak, booking_date = validate_booking_form(db, request.form)
+    if errors:
+        return render_index(values, errors, 400)
 
     start_date = booking_date
     end_date = booking_date
-
-    if booking_date < date.today():
-        return redirect(url_for("index", error="past-date"))
-
-    kayak = db.execute("SELECT * FROM kayaks WHERE id = ? AND active = 1", (kayak_id,)).fetchone()
-    if kayak is None or not date_range_is_available(db, kayak_id, start_date, end_date):
-        return redirect(url_for("index", error="unavailable"))
+    kayak_id = kayak["id"]
 
     booking = {
         "kayak_id": kayak_id,
         "booking_reference": generate_booking_reference(),
-        "customer_name": form.get("customer_name", "").strip(),
-        "customer_email": form.get("customer_email", "").strip(),
-        "customer_phone": form.get("customer_phone", "").strip(),
+        "customer_name": values["customer_name"],
+        "customer_email": values["customer_email"],
+        "customer_phone": values["customer_phone"],
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
-        "notes": form.get("notes", "").strip(),
+        "notes": values["notes"],
         "total_price": count_days(start_date, end_date) * kayak["price_per_day"],
     }
-
-    if not booking["customer_name"] or "@" not in booking["customer_email"]:
-        return redirect(url_for("index", error="contact"))
 
     # Check availability and insert atomically: BEGIN IMMEDIATE takes the write
     # lock up front so two simultaneous requests cannot both pass the check.
@@ -441,7 +481,8 @@ def book():
             db.execute("BEGIN IMMEDIATE")
             if not date_range_is_available(db, kayak_id, start_date, end_date):
                 db.rollback()
-                return redirect(url_for("index", error="unavailable"))
+                errors["booking_date"] = "That kayak was just booked on this date. Please pick another date."
+                return render_index(values, errors, 409)
             cursor = db.execute(
                 """
                 INSERT INTO bookings
@@ -471,7 +512,8 @@ def book():
             booking["booking_reference"] = generate_booking_reference()
 
     if booking_id is None:
-        return redirect(url_for("index", error="unavailable"))
+        errors["booking_date"] = "That kayak was just booked on this date. Please pick another date."
+        return render_index(values, errors, 409)
 
     queue_booking_emails(booking_id, booking, kayak)
     if smtp_is_configured(current_app.config):

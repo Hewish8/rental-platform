@@ -28,14 +28,8 @@
 
   <main>
     {% set toast_messages = [] %}
-    {% if request.args.get('error') %}
-      {% set error_messages = {
-        'invalid-date': 'Please pick a valid booking date.',
-        'past-date': 'That date has already passed. Please pick an upcoming date.',
-        'unavailable': 'That kayak is already booked on the selected date. Please choose another date or kayak.',
-        'contact': 'Please enter your full name and a valid email address so we can confirm your booking.'
-      } %}
-      {% set _ = toast_messages.append(('error', error_messages.get(request.args.get('error'), 'Please check the booking details.'))) %}
+    {% if form_errors %}
+      {% set _ = toast_messages.append(('error', 'Your booking could not be saved yet. Please fix the highlighted fields below.')) %}
     {% endif %}
     {% include "_flash.html" %}
 
@@ -113,8 +107,8 @@
         <h2>Reserve your kayak</h2>
         <p>The booking is saved immediately, that day becomes unavailable, and email alerts are sent to both the owner and customer.</p>
       </div>
-      <form class="booking-form" method="post" action="{{ url_for('book') }}">
-        <input type="hidden" name="kayak_id" value="{{ kayaks[0].id if kayaks else 1 }}">
+      <form class="booking-form" method="post" action="{{ url_for('book') }}" novalidate>
+        <input type="hidden" name="kayak_id" value="{{ form_values.get('kayak_id') or (kayaks[0].id if kayaks else 1) }}">
         <button class="selected-kayak" id="selectedKayakShortcut" type="button">
           <span>Selected kayak</span>
           <strong>
@@ -122,25 +116,36 @@
             <small id="selectedKayakPrice">Rs {{ kayaks[0].price_per_day if kayaks else 1200 }}/day</small>
           </strong>
         </button>
+        {% if form_errors.get('kayak_id') %}<span class="field-error" id="error-kayak-id">{{ form_errors['kayak_id'] }}</span>{% endif %}
         <label>
           Full name
-          <input required name="customer_name" autocomplete="name" placeholder="Jane Visitor">
+          <input required name="customer_name" autocomplete="name" placeholder="Jane Visitor"
+                 value="{{ form_values.get('customer_name', '') }}"
+                 {% if form_errors.get('customer_name') %}aria-invalid="true" aria-describedby="error-customer-name"{% endif %}>
+          {% if form_errors.get('customer_name') %}<span class="field-error" id="error-customer-name">{{ form_errors['customer_name'] }}</span>{% endif %}
         </label>
         <label>
           Email
-          <input required name="customer_email" type="email" autocomplete="email" placeholder="jane@example.com">
+          <input required name="customer_email" type="email" autocomplete="email" placeholder="jane@example.com"
+                 value="{{ form_values.get('customer_email', '') }}"
+                 {% if form_errors.get('customer_email') %}aria-invalid="true" aria-describedby="error-customer-email"{% endif %}>
+          {% if form_errors.get('customer_email') %}<span class="field-error" id="error-customer-email">{{ form_errors['customer_email'] }}</span>{% endif %}
         </label>
         <label>
           Phone or WhatsApp
-          <input name="customer_phone" autocomplete="tel" placeholder="+230 5XXX XXXX">
+          <input name="customer_phone" autocomplete="tel" placeholder="+230 5XXX XXXX"
+                 value="{{ form_values.get('customer_phone', '') }}">
         </label>
         <label>
           Booking date
-          <input required id="bookingDate" name="booking_date" type="date" min="{{ today }}">
+          <input required id="bookingDate" name="booking_date" type="date" min="{{ today }}"
+                 value="{{ form_values.get('booking_date', '') }}"
+                 {% if form_errors.get('booking_date') %}aria-invalid="true" aria-describedby="error-booking-date"{% endif %}>
+          {% if form_errors.get('booking_date') %}<span class="field-error" id="error-booking-date">{{ form_errors['booking_date'] }}</span>{% endif %}
         </label>
         <label>
           Message
-          <textarea name="notes" rows="4" placeholder="Preferred time, hotel, or WhatsApp number"></textarea>
+          <textarea name="notes" rows="4" placeholder="Preferred time, hotel, or WhatsApp number">{{ form_values.get('notes', '') }}</textarea>
         </label>
         <div class="actions">
           <button class="button primary" type="submit">{{ icon('send') }}Confirm booking</button>

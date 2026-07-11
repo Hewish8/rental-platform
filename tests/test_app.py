@@ -127,31 +127,39 @@ def test_double_booking_rejected(app, client):
     first = client.post("/book", data=booking_form())
     assert "/booking/" in first.headers["Location"]
     second = client.post("/book", data=booking_form(customer_name="Other Person"))
-    assert "error=unavailable" in second.headers["Location"]
+    assert second.status_code == 400
+    assert b"already booked on this date" in second.data
+    # Rejected form keeps what the visitor typed
+    assert b"Other Person" in second.data
     assert db_rows(app, "SELECT COUNT(*) FROM bookings")[0][0] == 1
 
 
 def test_past_date_rejected(client):
     response = client.post("/book", data=booking_form(booking_date="2020-01-01"))
-    assert "error=past-date" in response.headers["Location"]
+    assert response.status_code == 400
+    assert b"already passed" in response.data
 
 
 def test_invalid_date_rejected(client):
     response = client.post("/book", data=booking_form(booking_date="not-a-date"))
-    assert "error=invalid-date" in response.headers["Location"]
+    assert response.status_code == 400
+    assert b"valid booking date" in response.data
 
 
 def test_missing_contact_rejected(app, client):
     response = client.post("/book", data=booking_form(customer_name=""))
-    assert "error=contact" in response.headers["Location"]
+    assert response.status_code == 400
+    assert b"full name" in response.data
     response = client.post("/book", data=booking_form(customer_email="no-at-sign"))
-    assert "error=contact" in response.headers["Location"]
+    assert response.status_code == 400
+    assert b"valid email address" in response.data
     assert db_rows(app, "SELECT COUNT(*) FROM bookings")[0][0] == 0
 
 
 def test_unknown_kayak_rejected(client):
     response = client.post("/book", data=booking_form(kayak_id="999"))
-    assert "error=unavailable" in response.headers["Location"]
+    assert response.status_code == 400
+    assert b"no longer available" in response.data
 
 
 def test_booking_references_are_unique(app, client):
