@@ -1,172 +1,81 @@
-{% extends "base.html" %}
+{% extends "admin_base.html" %}
 
-{% block title %}Owner bookings{% endblock %}
+{% block title %}Bookings — Admin{% endblock %}
+{% block admin_title %}Bookings{% endblock %}
 
-{% block body_class %}plain-page{% endblock %}
+{% block admin_body %}
+  <section class="list-toolbar">
+    <div class="filter-chips" role="group" aria-label="Filter bookings">
+      {% for key, label in [('upcoming', 'Upcoming'), ('today', 'Today'), ('past', 'Past'), ('cancelled', 'Cancelled'), ('unpaid', 'Unpaid'), ('all', 'All')] %}
+        <a class="filter-chip {% if view == key %}is-active{% endif %}" href="{{ url_for('admin', view=key, q=q) }}">{{ label }}</a>
+      {% endfor %}
+    </div>
+    <form class="list-search" method="get" action="{{ url_for('admin') }}">
+      <input type="hidden" name="view" value="{{ view }}">
+      <input name="q" value="{{ q }}" placeholder="Search name, phone, or reference" aria-label="Search bookings">
+      <button class="button secondary" type="submit">Search</button>
+    </form>
+    <a class="button secondary" href="{{ url_for('admin_bookings_csv') }}">Export CSV</a>
+  </section>
 
-{% block body %}
-  <main class="admin-page">
-    <header class="admin-header">
-      <div>
-        <p class="eyebrow">Owner dashboard</p>
-        <h1>Bookings</h1>
-      </div>
-      <div class="admin-actions-inline">
-        <a class="button secondary" href="{{ url_for('admin_audit') }}">Activity log</a>
-        <a class="button primary" href="{{ url_for('index') }}">View website</a>
-        <form method="post" action="{{ url_for('admin_logout') }}">
-          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-          <button class="button secondary" type="submit">Sign out</button>
-        </form>
-      </div>
-    </header>
-
-    {% if not smtp_configured %}
-      <div class="notice warning">Email is not configured. Bookings are still saved, but confirmation emails need SMTP settings in .env.</div>
-    {% endif %}
-    {% include "_flash.html" %}
-
-    <section class="admin-tools">
-      <article class="admin-tool">
-        <p class="eyebrow">Mail server</p>
-        <h2>Test email</h2>
-        <p class="admin-muted">
-          SMTP: {{ smtp_host or 'Not configured' }}:{{ smtp_port }}
-          {% if smtp_configured %}| Ready to test{% else %}| Missing settings in .env{% endif %}
-        </p>
-        <form class="admin-form" method="post" action="{{ url_for('admin_test_email') }}">
-          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-          <label>
-            Send test to
-            <input name="test_email" type="email" value="{{ owner_email }}" placeholder="your-email@example.com">
-          </label>
-          <button class="button primary" type="submit">Send test email</button>
-        </form>
-      </article>
-
-      <article class="admin-tool">
-        <p class="eyebrow">Fleet</p>
-        <h2>{{ kayaks|length }} kayaks active</h2>
-        <p class="admin-muted">Editing a booking recalculates the total from the selected kayak price and booking date.</p>
-      </article>
-    </section>
-
-    <section class="booking-table-wrap">
-      <table class="booking-table editable-bookings">
-        <thead>
+  <section class="booking-table-wrap">
+    <table class="booking-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Customer</th>
+          <th>Kayak</th>
+          <th>Status</th>
+          <th>Payment</th>
+          <th>Reference</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for booking in bookings %}
+          {% set paid = paid_map.get(booking.id, 0) %}
+          {% set due = (booking.total_price or 0) - paid %}
           <tr>
-            <th>Reference</th>
-            <th>Customer</th>
-            <th>Booking date</th>
-            <th>Notes</th>
-            <th>Email</th>
-            <th>Actions</th>
+            <td><strong>{{ booking.start_date }}</strong></td>
+            <td>
+              {{ booking.customer_name }}
+              <span>{{ booking.customer_phone or booking.customer_email }}</span>
+            </td>
+            <td>{{ booking.kayak_name }}</td>
+            <td><span class="status-chip status-{{ booking.status }}">{{ booking.status.replace('_', ' ') }}</span></td>
+            <td>
+              {% if due <= 0 %}
+                <span class="pay-chip paid">Paid</span>
+              {% else %}
+                <span class="pay-chip due">Due Rs {{ due }}</span>
+              {% endif %}
+            </td>
+            <td><span class="mono">{{ booking.booking_reference }}</span></td>
+            <td><a class="button resend" href="{{ url_for('admin_booking_detail', booking_id=booking.id) }}">Open</a></td>
           </tr>
-        </thead>
-        <tbody>
-          {% for booking in bookings %}
-            <tr>
-              <td>
-                <strong>{{ booking.booking_reference or booking.id }}</strong>
-                <span>Created {{ booking.created_at }}</span>
-                {% set paid = paid_map.get(booking.id, 0) %}
-                {% set due = (booking.total_price or 0) - paid %}
-                {% if due <= 0 %}
-                  <span class="pay-chip paid">Paid</span>
-                {% else %}
-                  <span class="pay-chip due">Due Rs {{ due }}</span>
-                {% endif %}
-                <form class="payment-form" method="post" action="{{ url_for('admin_record_payment', booking_id=booking.id) }}">
-                  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-                  <input name="amount" type="number" min="1" placeholder="Rs" required aria-label="Amount">
-                  <select name="method" aria-label="Method">
-                    <option value="cash">cash</option>
-                    <option value="card">card</option>
-                    <option value="transfer">transfer</option>
-                  </select>
-                  <select name="kind" aria-label="Kind">
-                    <option value="payment">payment</option>
-                    <option value="refund">refund</option>
-                  </select>
-                  <button class="button resend" type="submit">Record</button>
-                </form>
-              </td>
-              <td>
-                <form id="booking-{{ booking.id }}-update" method="post" action="{{ url_for('admin_update_booking', booking_id=booking.id) }}">
-                  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-                  <label>
-                    Name
-                    <input required name="customer_name" value="{{ booking.customer_name }}">
-                  </label>
-                  <label>
-                    Email
-                    <input required name="customer_email" type="email" value="{{ booking.customer_email }}">
-                  </label>
-                  <label>
-                    Phone
-                    <input name="customer_phone" value="{{ booking.customer_phone or '' }}">
-                  </label>
-                </form>
-              </td>
-              <td>
-                <label form="booking-{{ booking.id }}-update">
-                  Kayak
-                  <select name="kayak_id" form="booking-{{ booking.id }}-update">
-                    {% for kayak in kayaks %}
-                      <option value="{{ kayak.id }}" {% if kayak.id == booking.kayak_id %}selected{% endif %}>{{ kayak.name }}</option>
-                    {% endfor %}
-                  </select>
-                </label>
-                <label form="booking-{{ booking.id }}-update">
-                  Date
-                  <input required name="booking_date" type="date" value="{{ booking.start_date }}" form="booking-{{ booking.id }}-update">
-                </label>
-                <label form="booking-{{ booking.id }}-update">
-                  Status
-                  <select name="status" form="booking-{{ booking.id }}-update">
-                    {% for status in ['confirmed', 'on_water', 'returned', 'cancelled', 'no_show'] %}
-                      <option value="{{ status }}" {% if booking.status == status %}selected{% endif %}>{{ status.replace('_', ' ') }}</option>
-                    {% endfor %}
-                  </select>
-                </label>
-                <p class="admin-total">Rs {{ booking.total_price or '-' }}</p>
-              </td>
-              <td>
-                <label form="booking-{{ booking.id }}-update">
-                  Notes
-                  <textarea name="notes" rows="6" form="booking-{{ booking.id }}-update">{{ booking.notes or '' }}</textarea>
-                </label>
-              </td>
-              <td class="email-{{ booking.email_status }}">
-                {{ booking.email_status }}
-                {% if booking.email_error %}<span title="{{ booking.email_error }}">{{ booking.email_error }}</span>{% endif %}
-                <form method="post" action="{{ url_for('admin_resend_email', booking_id=booking.id) }}">
-                  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-                  <button class="button resend" type="submit">Resend email</button>
-                </form>
-              </td>
-              <td>
-                <div class="admin-actions">
-                  <button class="button primary" type="submit" form="booking-{{ booking.id }}-update">Save</button>
-                  <form method="post" action="{{ url_for('admin_cancel_booking', booking_id=booking.id) }}" onsubmit="return confirm('Cancel this booking? The dates become available again.')">
-                    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-                    <input name="reason" placeholder="Reason (optional)">
-                    <button class="button danger" type="submit">Cancel booking</button>
-                  </form>
-                </div>
-              </td>
-            </tr>
-          {% else %}
-            <tr>
-              <td colspan="6">No bookings yet.</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </section>
-  </main>
-{% endblock %}
+        {% else %}
+          <tr><td colspan="7">No bookings match this view.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
 
-{% block scripts %}
-  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <section class="admin-tools">
+    <article class="admin-tool">
+      <p class="eyebrow">Mail server</p>
+      <h2>Test email</h2>
+      <p class="admin-muted">
+        SMTP: {{ smtp_host or 'Not configured' }}:{{ smtp_port }}
+        {% if smtp_configured %}| Ready to test{% else %}| Missing settings in .env{% endif %}
+      </p>
+      <form class="admin-form" method="post" action="{{ url_for('admin_test_email') }}">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <label>
+          Send test to
+          <input name="test_email" type="email" value="{{ owner_email }}" placeholder="your-email@example.com">
+        </label>
+        <button class="button primary" type="submit">Send test email</button>
+      </form>
+    </article>
+  </section>
 {% endblock %}

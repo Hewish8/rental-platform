@@ -1,3 +1,5 @@
+import csv
+import io as io_module
 import os
 import secrets
 import sqlite3
@@ -724,6 +726,14 @@ def payments_by_booking(db):
     return {row["booking_id"]: row["paid"] for row in rows}
 
 
+def admin_redirect():
+    """POST handlers return to the page they came from (detail pages pass next)."""
+    next_path = request.form.get("next", "")
+    if next_path.startswith("/admin"):
+        return redirect(next_path)
+    return redirect(url_for("admin"))
+
+
 def record_audit(db, action, entity, entity_id=None, details=None):
     """Append-only trail of who changed what. Committed with the caller's commit."""
     user = getattr(g, "user", None)
@@ -801,29 +811,134 @@ def admin_logout():
     return redirect(url_for("admin_login"))
 
 
+def fetch_bookings(db, view, q):
+    today_iso = date.today().isoformat()
+    where = ["1=1"]
+    params = []
+    order = "bookings.start_date DESC, bookings.created_at DESC"
+    if view == "upcoming":
+        where.append("bookings.start_date >= ?")
+        params.append(today_iso)
+        where.append("bookings.status IN ('confirmed', 'on_water')")
+        order = "bookings.start_date ASC, bookings.created_at DESC"
+    elif view == "today":
+        where.append("bookings.start_date = ?")
+        params.append(today_iso)
+    elif view == "past":
+        where.append("bookings.start_date < ?")
+        params.append(today_iso)
+        where.append("bookings.status IN ('confirmed', 'on_water', 'returned')")
+    elif view == "cancelled":
+        where.append("bookings.status IN ('cancelled', 'no_show')")
+    if q:
+        where.append(
+            "(bookings.customer_name LIKE ? OR bookings.customer_email LIKE ? "
+            "OR bookings.customer_phone LIKE ? OR bookings.booking_reference LIKE ?)"
+        )
+        params.extend([f"%{q}%"] * 4)
+    return db.execute(
+        f"""
+        SELECT bookings.*, kayaks.name AS kayak_name
+        FROM bookings
+        JOIN kayaks ON kayaks.id = bookings.kayak_id
+        WHERE {' AND '.join(where)}
+        ORDER BY {order}
+        """,
+        params,
+    ).fetchall()
+
+
 @admin_required
 def admin():
     cfg = current_app.config
     db = get_db()
-    bookings = db.execute(
+    view = request.args.get("view", "upcoming")
+    if view not in ("upcoming", "today", "past", "cancelled", "unpaid", "all"):
+        view = "upcoming"
+    q = request.args.get("q", "").strip()
+    bookings = fetch_bookings(db, view, q)
+    paid_map = payments_by_booking(db)
+    if view == "unpaid":
+        bookings = [
+            b for b in bookings
+            if b["status"] in ("confirmed", "on_water", "returned")
+            and (b["total_price"] or 0) - paid_map.get(b["id"], 0) > 0
+        ]
+    return render_template(
+        "admin.html",
+        bookings=bookings,
+        view=view,
+        q=q,
+        paid_map=paid_map,
+        owner_email=cfg["OWNER_EMAIL"],
+        smtp_host=cfg["SMTP_HOST"],
+        smtp_port=cfg["SMTP_PORT"],
+    )
+
+
+@admin_required
+def admin_booking_detail(booking_id):
+    db = get_db()
+    booking = db.execute(
         """
         SELECT bookings.*, kayaks.name AS kayak_name
         FROM bookings
         JOIN kayaks ON kayaks.id = bookings.kayak_id
-        ORDER BY start_date ASC, created_at DESC
-        """
+        WHERE bookings.id = ?
+        """,
+        (booking_id,),
+    ).fetchone()
+    if booking is None:
+        flash("Booking not found.", "error")
+        return redirect(url_for("admin"))
+    payments = db.execute(
+        "SELECT * FROM payments WHERE booking_id = ? ORDER BY id DESC", (booking_id,)
+    ).fetchall()
+    paid = sum(p["amount"] if p["kind"] != "refund" else -p["amount"] for p in payments)
+    audit_entries = db.execute(
+        "SELECT * FROM audit_log WHERE entity = 'booking' AND entity_id = ? ORDER BY id DESC LIMIT 50",
+        (str(booking_id),),
     ).fetchall()
     kayaks = db.execute("SELECT * FROM kayaks WHERE active = 1 ORDER BY id").fetchall()
-    paid_map = payments_by_booking(db)
     return render_template(
-        "admin.html",
-        bookings=bookings,
+        "admin_booking.html",
+        booking=booking,
+        payments=payments,
+        paid=paid,
+        due=(booking["total_price"] or 0) - paid,
+        audit_entries=audit_entries,
         kayaks=kayaks,
-        paid_map=paid_map,
-        smtp_configured=smtp_is_configured(cfg),
-        owner_email=cfg["OWNER_EMAIL"],
-        smtp_host=cfg["SMTP_HOST"],
-        smtp_port=cfg["SMTP_PORT"],
+    )
+
+
+@admin_required
+def admin_bookings_csv():
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT bookings.booking_reference, bookings.start_date, bookings.end_date,
+               kayaks.name AS kayak, bookings.customer_name, bookings.customer_email,
+               bookings.customer_phone, bookings.status, bookings.total_price,
+               bookings.source, bookings.created_at, bookings.notes
+        FROM bookings JOIN kayaks ON kayaks.id = bookings.kayak_id
+        ORDER BY bookings.start_date DESC
+        """
+    ).fetchall()
+    buffer = io_module.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        ["reference", "start_date", "end_date", "kayak", "customer", "email", "phone",
+         "status", "total_rs", "source", "created_at", "notes"]
+    )
+    for row in rows:
+        writer.writerow([row[k] for k in row.keys()])
+    return (
+        buffer.getvalue(),
+        200,
+        {
+            "Content-Type": "text/csv; charset=utf-8",
+            "Content-Disposition": "attachment; filename=bookings.csv",
+        },
     )
 
 
@@ -884,7 +999,7 @@ def admin_update_booking(booking_id):
         record_audit(db, "updated", "booking", booking_id, changes)
     db.commit()
     flash("Booking updated.", "success")
-    return redirect(url_for("admin"))
+    return admin_redirect()
 
 
 @admin_required
@@ -903,7 +1018,7 @@ def admin_cancel_booking(booking_id):
     record_audit(db, status, "booking", booking_id, f"{booking['booking_reference']}: {reason}")
     db.commit()
     flash(f"Booking {booking['booking_reference']} marked {status.replace('_', '-')}. The dates are available again.", "success")
-    return redirect(url_for("admin"))
+    return admin_redirect()
 
 
 @admin_required
@@ -937,7 +1052,7 @@ def admin_resend_email(booking_id):
         )
         db.commit()
         flash(f"Email failed again: {error}", "error")
-    return redirect(url_for("admin"))
+    return admin_redirect()
 
 
 @admin_required
@@ -974,7 +1089,7 @@ def admin_record_payment(booking_id):
     record_audit(db, f"{kind}-recorded", "booking", booking_id, f"Rs {amount} {method} {note}".strip())
     db.commit()
     flash(f"{'Refund' if kind == 'refund' else 'Payment'} of Rs {amount} recorded for {booking['booking_reference']}.", "success")
-    return redirect(url_for("admin"))
+    return admin_redirect()
 
 
 @admin_required
@@ -1001,7 +1116,7 @@ def admin_test_email():
         flash(f"Test email sent to {recipient}.", "success")
     except Exception as error:
         flash(f"Test email failed: {error}", "error")
-    return redirect(url_for("admin"))
+    return admin_redirect()
 
 
 # --- App factory --------------------------------------------------------
@@ -1026,6 +1141,10 @@ def create_app(config_overrides=None):
     app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
     app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
     app.jinja_env.globals["csrf_token"] = csrf_token
+
+    @app.context_processor
+    def inject_admin_context():
+        return {"smtp_configured": smtp_is_configured(app.config)}
     app.before_request(check_csrf)
     app.before_request(load_logged_in_user)
     app.teardown_appcontext(close_db)
@@ -1039,6 +1158,8 @@ def create_app(config_overrides=None):
     app.add_url_rule("/admin/login", "admin_login", admin_login, methods=["GET", "POST"])
     app.add_url_rule("/admin/logout", "admin_logout", admin_logout, methods=["POST"])
     app.add_url_rule("/admin", "admin", admin)
+    app.add_url_rule("/admin/bookings/<int:booking_id>", "admin_booking_detail", admin_booking_detail)
+    app.add_url_rule("/admin/bookings.csv", "admin_bookings_csv", admin_bookings_csv)
     app.add_url_rule(
         "/admin/bookings/<int:booking_id>/update", "admin_update_booking", admin_update_booking, methods=["POST"]
     )

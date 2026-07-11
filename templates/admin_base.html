@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block body_class %}plain-page{% endblock %}
+
+{% block body %}
+  <main class="admin-page">
+    <header class="admin-header">
+      <div>
+        <p class="eyebrow">Mahebourg Kayak — owner console</p>
+        <h1>{% block admin_title %}Dashboard{% endblock %}</h1>
+      </div>
+      <div class="admin-actions-inline">
+        <a class="button secondary" href="{{ url_for('index') }}">View website</a>
+        <form method="post" action="{{ url_for('admin_logout') }}">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <button class="button secondary" type="submit">Sign out</button>
+        </form>
+      </div>
+    </header>
+
+    <nav class="admin-tabs" aria-label="Admin sections">
+      <a href="{{ url_for('admin') }}" {% if request.endpoint in ['admin', 'admin_booking_detail'] %}class="is-active" aria-current="page"{% endif %}>Bookings</a>
+      <a href="{{ url_for('admin_audit') }}" {% if request.endpoint == 'admin_audit' %}class="is-active" aria-current="page"{% endif %}>Activity</a>
+    </nav>
+
+    {% if not smtp_configured %}
+      <div class="notice warning">Email is not configured. Bookings are still saved, but confirmation emails need SMTP settings in .env.</div>
+    {% endif %}
+    {% include "_flash.html" %}
+
+    {% block admin_body %}{% endblock %}
+  </main>
+{% endblock %}
+
+{% block scripts %}
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}

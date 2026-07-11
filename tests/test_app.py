@@ -309,6 +309,50 @@ def test_payment_recording_and_due_calculation(app, client, admin_client):
     assert db_rows(app, "SELECT COUNT(*) FROM payments")[0][0] == 3
 
 
+def test_bookings_list_filters_and_search(app, client, admin_client):
+    client.post("/book", data=booking_form())
+    client.post("/book", data=booking_form(
+        booking_date=(date.today() + timedelta(days=12)).isoformat(),
+        customer_name="Zara Search-Target", kayak_id="2",
+    ))
+    page = admin_client.get("/admin")
+    assert b"Zara Search-Target" in page.data and b"Jane Visitor" in page.data
+    page = admin_client.get("/admin?view=upcoming&q=Zara")
+    assert b"Zara Search-Target" in page.data and b"Jane Visitor" not in page.data
+    page = admin_client.get("/admin?view=cancelled")
+    assert b"No bookings match" in page.data
+    page = admin_client.get("/admin?view=unpaid")
+    assert b"Zara Search-Target" in page.data
+
+
+def test_booking_detail_page(app, client, admin_client):
+    client.post("/book", data=booking_form())
+    booking_id = db_rows(app, "SELECT id FROM bookings")[0][0]
+    page = admin_client.get(f"/admin/bookings/{booking_id}")
+    assert page.status_code == 200
+    assert b"Jane Visitor" in page.data
+    assert b"Edit booking" in page.data
+    assert b"Payments" in page.data
+    # POST with next returns to the detail page
+    response = admin_client.post(
+        f"/admin/bookings/{booking_id}/payments",
+        data={"amount": "1200", "method": "cash", "next": f"/admin/bookings/{booking_id}"},
+    )
+    assert response.headers["Location"] == f"/admin/bookings/{booking_id}"
+    page = admin_client.get(f"/admin/bookings/{booking_id}")
+    assert b"Rs 1200 received" in page.data
+
+
+def test_bookings_csv_export(app, client, admin_client):
+    client.post("/book", data=booking_form())
+    response = admin_client.get("/admin/bookings.csv")
+    assert response.status_code == 200
+    assert "text/csv" in response.headers["Content-Type"]
+    body = response.data.decode()
+    assert body.splitlines()[0].startswith("reference,")
+    assert "Jane Visitor" in body
+
+
 # --- CSRF ------------------------------------------------------------------
 
 

@@ -1,0 +1,128 @@
+{% extends "admin_base.html" %}
+
+{% block title %}{{ booking.booking_reference }} — Admin{% endblock %}
+{% block admin_title %}{{ booking.booking_reference }}{% endblock %}
+
+{% block admin_body %}
+  <p><a class="back-link" href="{{ url_for('admin') }}">&larr; All bookings</a></p>
+
+  <div class="detail-grid">
+    <section class="admin-tool">
+      <div class="detail-head">
+        <span class="status-chip status-{{ booking.status }}">{{ booking.status.replace('_', ' ') }}</span>
+        {% if due <= 0 %}
+          <span class="pay-chip paid">Paid</span>
+        {% else %}
+          <span class="pay-chip due">Due Rs {{ due }}</span>
+        {% endif %}
+        <span class="mono">{{ booking.source }}</span>
+      </div>
+
+      <dl class="booking-details">
+        <div><dt>Customer</dt><dd>{{ booking.customer_name }}</dd></div>
+        <div><dt>Kayak</dt><dd>{{ booking.kayak_name }}</dd></div>
+        <div><dt>Date</dt><dd>{{ booking.start_date }}</dd></div>
+        <div><dt>Total</dt><dd>Rs {{ booking.total_price }}</dd></div>
+        <div><dt>Email</dt><dd>{{ booking.customer_email }}</dd></div>
+        <div><dt>Phone</dt><dd>
+          {% if booking.customer_phone %}
+            <a href="tel:{{ booking.customer_phone.replace(' ', '') }}">{{ booking.customer_phone }}</a>
+            · <a href="https://wa.me/{{ booking.customer_phone.replace(' ', '').replace('+', '') }}" target="_blank" rel="noopener">WhatsApp</a>
+          {% else %}Not provided{% endif %}
+        </dd></div>
+        {% if booking.notes %}<div class="full"><dt>Notes</dt><dd>{{ booking.notes }}</dd></div>{% endif %}
+        {% if booking.cancelled_reason %}<div class="full"><dt>Cancellation reason</dt><dd>{{ booking.cancelled_reason }}</dd></div>{% endif %}
+      </dl>
+
+      <details class="edit-panel">
+        <summary>Edit booking</summary>
+        <form method="post" action="{{ url_for('admin_update_booking', booking_id=booking.id) }}" class="edit-form">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ url_for('admin_booking_detail', booking_id=booking.id) }}">
+          <label>Name <input required name="customer_name" value="{{ booking.customer_name }}"></label>
+          <label>Email <input required name="customer_email" type="email" value="{{ booking.customer_email }}"></label>
+          <label>Phone <input name="customer_phone" value="{{ booking.customer_phone or '' }}"></label>
+          <label>Kayak
+            <select name="kayak_id">
+              {% for kayak in kayaks %}
+                <option value="{{ kayak.id }}" {% if kayak.id == booking.kayak_id %}selected{% endif %}>{{ kayak.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Date <input required name="booking_date" type="date" value="{{ booking.start_date }}"></label>
+          <label>Status
+            <select name="status">
+              {% for status in ['confirmed', 'on_water', 'returned', 'cancelled', 'no_show'] %}
+                <option value="{{ status }}" {% if booking.status == status %}selected{% endif %}>{{ status.replace('_', ' ') }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="full">Notes <textarea name="notes" rows="3">{{ booking.notes or '' }}</textarea></label>
+          <button class="button primary" type="submit">Save changes</button>
+        </form>
+      </details>
+
+      <div class="detail-actions">
+        <form method="post" action="{{ url_for('admin_resend_email', booking_id=booking.id) }}">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ url_for('admin_booking_detail', booking_id=booking.id) }}">
+          <button class="button secondary" type="submit">Resend email ({{ booking.email_status }})</button>
+        </form>
+        {% if booking.status not in ['cancelled', 'no_show'] %}
+          <form method="post" action="{{ url_for('admin_cancel_booking', booking_id=booking.id) }}" onsubmit="return confirm('Cancel this booking? The dates become available again.')">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="{{ url_for('admin_booking_detail', booking_id=booking.id) }}">
+            <input name="reason" placeholder="Reason (optional)">
+            <button class="button danger" type="submit">Cancel booking</button>
+          </form>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="admin-tool">
+      <p class="eyebrow">Payments</p>
+      <h2>Rs {{ paid }} received</h2>
+      {% if payments %}
+        <ul class="payment-list">
+          {% for payment in payments %}
+            <li>
+              <strong>{% if payment.kind == 'refund' %}−{% endif %}Rs {{ payment.amount }}</strong>
+              {{ payment.method }}{% if payment.note %} · {{ payment.note }}{% endif %}
+              <span>{{ payment.created_at.replace('T', ' ') }} by {{ payment.recorded_by }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="admin-muted">Nothing recorded yet.</p>
+      {% endif %}
+      <form class="payment-form" method="post" action="{{ url_for('admin_record_payment', booking_id=booking.id) }}">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <input type="hidden" name="next" value="{{ url_for('admin_booking_detail', booking_id=booking.id) }}">
+        <input name="amount" type="number" min="1" placeholder="Amount (Rs)" required aria-label="Amount">
+        <select name="method" aria-label="Method">
+          <option value="cash">cash</option>
+          <option value="card">card</option>
+          <option value="transfer">transfer</option>
+        </select>
+        <select name="kind" aria-label="Kind">
+          <option value="payment">payment</option>
+          <option value="refund">refund</option>
+        </select>
+        <input name="note" placeholder="Note (optional)">
+        <button class="button primary" type="submit">Record</button>
+      </form>
+
+      <p class="eyebrow history-title">History</p>
+      <ul class="timeline">
+        <li><strong>Created</strong> {{ booking.created_at.replace('T', ' ') }} ({{ booking.source }})</li>
+        {% if booking.checked_out_at %}<li><strong>Checked out</strong> {{ booking.checked_out_at.replace('T', ' ') }}</li>{% endif %}
+        {% if booking.checked_in_at %}<li><strong>Checked in</strong> {{ booking.checked_in_at.replace('T', ' ') }}</li>{% endif %}
+        {% for entry in audit_entries %}
+          <li><strong>{{ entry.action }}</strong> {{ entry.created_at.replace('T', ' ') }} by {{ entry.user_email }}
+            {% if entry.details %}<span>{{ entry.details }}</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  </div>
+{% endblock %}

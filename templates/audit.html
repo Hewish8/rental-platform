@@ -1,22 +1,10 @@
-{% extends "base.html" %}
+{% extends "admin_base.html" %}
 
 {% block title %}Activity log — Admin{% endblock %}
+{% block admin_title %}Activity log{% endblock %}
 
-{% block body_class %}plain-page{% endblock %}
-
-{% block body %}
-  <main class="admin-page">
-    <header class="admin-header">
-      <div>
-        <p class="eyebrow">Owner dashboard</p>
-        <h1>Activity log</h1>
-      </div>
-      <a class="button primary" href="{{ url_for('admin') }}">Back to bookings</a>
-    </header>
-
-    {% include "_flash.html" %}
-
-    <section class="booking-table-wrap">
+{% block admin_body %}
+  <section class="booking-table-wrap">
       <table class="booking-table">
         <thead>
           <tr>
@@ -41,10 +29,5 @@
           {% endfor %}
         </tbody>
       </table>
-    </section>
-  </main>
-{% endblock %}
-
-{% block scripts %}
-  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+  </section>
 {% endblock %}
