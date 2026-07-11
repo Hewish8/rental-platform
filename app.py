@@ -249,6 +249,28 @@ def date_range_is_available(db, kayak_id, start_date, end_date, exclude_booking_
 # --- Email --------------------------------------------------------------
 
 
+def booked_dates(db, kayak_id, start, end):
+    """All booked ISO dates for a kayak within [start, end], in one query."""
+    rows = db.execute(
+        """
+        SELECT start_date, end_date FROM bookings
+        WHERE kayak_id = ?
+          AND status = 'confirmed'
+          AND start_date <= ?
+          AND end_date >= ?
+        """,
+        (kayak_id, end.isoformat(), start.isoformat()),
+    ).fetchall()
+    booked = set()
+    for row in rows:
+        current = max(parse_booking_date(row["start_date"]), start)
+        last = min(parse_booking_date(row["end_date"]), end)
+        while current <= last:
+            booked.add(current.isoformat())
+            current += timedelta(days=1)
+    return booked
+
+
 def smtp_is_configured(cfg):
     return bool(cfg["SMTP_HOST"] and cfg["OWNER_EMAIL"] and cfg["FROM_EMAIL"])
 
@@ -394,16 +416,18 @@ def availability():
     if kayak is None:
         return jsonify({"error": "Unknown kayak."}), 404
 
+    end = start + timedelta(days=days - 1)
+    booked = booked_dates(db, kayak_id, start, end)
+
     availability_days = []
     for offset in range(days):
         current = start + timedelta(days=offset)
-        available = date_range_is_available(db, kayak_id, current, current)
         availability_days.append(
             {
                 "date": current.isoformat(),
                 "label": current.strftime("%d %b"),
                 "weekday": current.strftime("%a"),
-                "available": available,
+                "available": current.isoformat() not in booked,
             }
         )
     return jsonify(availability_days)
