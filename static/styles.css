@@ -118,8 +118,70 @@ a {
 
 .nav-links {
   display: flex;
-  gap: 1rem;
+  align-items: center;
+  gap: 1.1rem;
   color: rgba(255, 255, 255, 0.86);
+}
+
+.nav-cta {
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-pill);
+  color: var(--color-cta-ink);
+  background: var(--color-cta);
+  font-weight: 700;
+  transition: transform var(--ease-micro), box-shadow var(--ease-micro);
+}
+
+.nav-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(255, 200, 87, 0.35);
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.button.ghost {
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(4px);
+}
+
+.button.ghost:hover {
+  background: rgba(255, 255, 255, 0.16);
+  transform: translateY(-2px);
+}
+
+.trust-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-6) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trust-strip li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: var(--radius-pill);
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(5, 49, 55, 0.35);
+  backdrop-filter: blur(4px);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.trust-strip .icon {
+  color: var(--sun);
+  flex-shrink: 0;
 }
 
 .hero-content {
@@ -151,41 +213,18 @@ p {
 }
 
 h1 {
-  max-width: 760px;
+  max-width: 720px;
   margin-bottom: 1rem;
-  font-size: clamp(3rem, 8vw, 6.5rem);
+  font-size: clamp(2.6rem, 6.5vw, 4.8rem);
   line-height: 1.05;
-  letter-spacing: 0;
+  letter-spacing: -0.02em;
 }
 
-.water-title {
-  position: relative;
-  width: fit-content;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.28);
-  text-shadow:
-    0 2px 7px rgba(0, 43, 48, 0.22),
-    0 10px 22px rgba(0, 43, 48, 0.18);
-  filter: drop-shadow(0 7px 12px rgba(4, 41, 46, 0.2));
+.hero h1 {
+  color: white;
+  text-shadow: 0 2px 8px rgba(0, 43, 48, 0.35), 0 12px 32px rgba(0, 43, 48, 0.25);
 }
 
-.water-title::before {
-  content: attr(data-text);
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.16);
-  text-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.11),
-    0 14px 28px rgba(0, 43, 48, 0.28);
-}
-
-.water-title::after {
-  content: none;
-}
 
 h2 {
   margin-bottom: 0.8rem;
@@ -440,6 +479,14 @@ main {
   cursor: pointer;
   animation: floatIn 700ms ease both;
   transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.fleet .kayak-card:nth-child(2) {
+  animation-delay: 90ms;
+}
+
+.fleet .kayak-card:nth-child(3) {
+  animation-delay: 180ms;
 }
 
 .kayak-card:hover,
