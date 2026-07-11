@@ -45,10 +45,10 @@
 
     <section class="intro">
       <div>
-        <p class="eyebrow">First kayak today, fleet-ready tomorrow</p>
-        <h2>Simple, scenic, and built to expand.</h2>
+        <p class="eyebrow">The south-east coast, from the water</p>
+        <h2>Three islets. One quiet lagoon.</h2>
       </div>
-      <p>The site currently advertises one kayak, tracks availability by date, and prevents double bookings. More kayaks and regions can be added to the same database later.</p>
+      <p>Launch from the Mahebourg waterfront and glide over coral gardens toward Ile aux Aigrettes, Mouchoir Rouge, and the old lighthouse on Ile aux Fouquets. Calm, shallow, and protected by the reef — perfect for first-time paddlers and photographers alike.</p>
     </section>
 
     <section class="lagoon-strip" aria-label="Mahebourg lagoon views">
@@ -64,6 +64,30 @@
         <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/Leuchtturm%20%C3%8Ele%20aux%20Fouquets.jpg?width=1400" alt="Ile aux Phares lighthouse on Ile aux Fouquets">
         <figcaption>Ile aux Phares</figcaption>
       </figure>
+    </section>
+
+    <section class="how-it-works" aria-labelledby="howTitle">
+      <div class="section-copy">
+        <p class="eyebrow">How it works</p>
+        <h2 id="howTitle">Booked in a minute, on the water in a day.</h2>
+      </div>
+      <ol class="steps">
+        <li>
+          <span class="step-icon">{{ icon('calendar-check', 22) }}</span>
+          <h3>1. Book online</h3>
+          <p>Pick your kayak and date. No payment needed now — you pay on arrival, cash or card.</p>
+        </li>
+        <li>
+          <span class="step-icon">{{ icon('whatsapp', 22) }}</span>
+          <h3>2. We confirm</h3>
+          <p>You get an email right away, and the owner reaches out on WhatsApp before your paddle.</p>
+        </li>
+        <li>
+          <span class="step-icon">{{ icon('sun', 22) }}</span>
+          <h3>3. Show up &amp; paddle</h3>
+          <p>Arrive 15 minutes early at the Mahebourg waterfront. Gear, briefing, and the lagoon are waiting.</p>
+        </li>
+      </ol>
     </section>
 
     <section class="section-grid" id="fleet">
@@ -163,11 +187,72 @@
         </div>
       </form>
     </section>
+    <section class="location-faq" id="faq">
+      <div class="location-card">
+        <p class="eyebrow">Where to find us</p>
+        <h2>Mahebourg waterfront</h2>
+        <p class="location-line">{{ icon('map-pin') }}Mahebourg Waterfront, near the Pointe des Regates monument <em>(exact meeting point sent with your confirmation)</em></p>
+        <p class="location-line">{{ icon('clock') }}Open daily, 8:00 – 17:00 (last departure 15:00)</p>
+        <p class="location-line">{{ icon('whatsapp') }}<a href="https://wa.me/2305XXXXXXX">WhatsApp us</a> for questions or same-day requests</p>
+        <a class="button primary" href="https://www.google.com/maps/search/?api=1&query=Mahebourg+Waterfront+Mauritius" target="_blank" rel="noopener">{{ icon('map-pin') }}Get directions</a>
+      </div>
+      <div class="faq">
+        <p class="eyebrow">Good to know</p>
+        <h2>Frequently asked</h2>
+        <details>
+          <summary>Do I need kayaking experience?</summary>
+          <p>No. The lagoon is calm, shallow, and protected by the reef. You get a short briefing before you set off, and the routes are easy to follow.</p>
+        </details>
+        <details>
+          <summary>What should I bring?</summary>
+          <p>Sunscreen, a hat, water, and shoes that can get wet. We provide life jackets and a dry bag for your phone and valuables.</p>
+        </details>
+        <details>
+          <summary>How do I pay?</summary>
+          <p>You pay when you arrive — cash or card. Booking online just reserves your kayak and date.</p>
+        </details>
+        <details>
+          <summary>What if the weather turns bad?</summary>
+          <p>If conditions aren't safe to paddle, we contact you to rebook for another day at no cost, or cancel your booking entirely.</p>
+        </details>
+        <details>
+          <summary>Can children join?</summary>
+          <p>Children can share the tandem kayak with an adult. Message us on WhatsApp with ages and we'll recommend the best setup.</p>
+        </details>
+      </div>
+    </section>
+
+    {# TODO(owner): enable once real guest reviews exist — never publish sample quotes.
+    <section class="testimonials">
+      <div class="section-copy">
+        <p class="eyebrow">What guests say</p>
+        <h2>Postcards from the lagoon.</h2>
+      </div>
+      <div class="testimonial-grid"> ... </div>
+    </section>
+    #}
   </main>
 
   <footer>
-    <p>Mahebourg Lagoon Kayak Rentals | Mauritius</p>
-    <p><a href="{{ url_for('admin') }}">Owner bookings</a></p>
-    <p>Images include Wikimedia Commons media for Ile aux Aigrettes, Mouchoir Rouge by Blacadeyemi, Ile aux Fouquets by Happolati, and kayak photography by Jernej Furman.</p>
+    <div class="footer-grid">
+      <div>
+        <p class="footer-brand">Mahebourg Lagoon Kayak Rentals</p>
+        <p>Mahebourg Waterfront, Mauritius</p>
+        <p>Open daily 8:00 – 17:00</p>
+      </div>
+      <div>
+        <p class="footer-heading">Contact</p>
+        <p><a href="https://wa.me/2305XXXXXXX">{{ icon('whatsapp', 16) }} WhatsApp: +230 5XXX XXXX</a></p>
+        <p><a href="tel:+2305XXXXXXX">{{ icon('phone', 16) }} +230 5XXX XXXX</a></p>
+        <p><a href="mailto:{{ owner_email or 'hello@example.com' }}">{{ icon('mail', 16) }} Email us</a></p>
+      </div>
+      <div>
+        <p class="footer-heading">Explore</p>
+        <p><a href="#fleet">Our kayaks</a></p>
+        <p><a href="#availability">Availability</a></p>
+        <p><a href="#faq">FAQ &amp; location</a></p>
+      </div>
+    </div>
+    <p class="footer-fineprint">Images include Wikimedia Commons media for Ile aux Aigrettes, Mouchoir Rouge by Blacadeyemi, Ile aux Fouquets by Happolati, and kayak photography by Jernej Furman.</p>
   </footer>
 {% endblock %}

@@ -364,6 +364,7 @@ def render_index(form_values=None, form_errors=None, status=200):
             kayaks=kayaks,
             today=date.today().isoformat(),
             smtp_configured=smtp_is_configured(current_app.config),
+            owner_email=current_app.config["OWNER_EMAIL"],
             form_values=form_values or {},
             form_errors=form_errors or {},
         ),
