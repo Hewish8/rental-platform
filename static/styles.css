@@ -729,6 +729,8 @@ dd {
 }
 
 .booking-form {
+  position: sticky;
+  top: var(--space-4);
   display: grid;
   gap: 1rem;
   padding: 1.4rem;
@@ -1304,4 +1306,95 @@ dd,
   font-size: 0.8rem;
   opacity: 0.75;
   text-align: left;
+}
+
+
+/* --- Price summary + payment note ---------------------------------------- */
+
+.price-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--surface-tint);
+  font-weight: 600;
+}
+
+.price-summary strong {
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.payment-note {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.payment-note .icon {
+  color: var(--color-success);
+  flex-shrink: 0;
+}
+
+/* --- Mobile sticky booking bar -------------------------------------------- */
+
+.booking-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 900;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -8px 30px rgba(15, 62, 66, 0.14);
+  animation: barIn 250ms ease both;
+}
+
+.booking-bar-info {
+  display: grid;
+  line-height: 1.3;
+}
+
+.booking-bar-info strong {
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.booking-bar-info span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.booking-bar .button {
+  min-height: 2.75rem;
+  padding: 0.6rem 1.6rem;
+}
+
+@keyframes barIn {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 780px) {
+  .booking-bar:not([hidden]) {
+    display: flex;
+  }
+
+  .booking-form {
+    position: static;
+  }
 }

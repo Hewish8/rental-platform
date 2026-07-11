@@ -10,6 +10,12 @@ const selectedKayakName = document.querySelector("#selectedKayakName");
 const selectedKayakPrice = document.querySelector("#selectedKayakPrice");
 const selectedKayakShortcut = document.querySelector("#selectedKayakShortcut");
 const kayakCards = document.querySelectorAll(".kayak-card");
+const priceSummary = document.querySelector("#priceSummary");
+const summaryLine = document.querySelector("#summaryLine");
+const summaryTotal = document.querySelector("#summaryTotal");
+const bookingBar = document.querySelector("#bookingBar");
+const bookingBarPrice = document.querySelector("#bookingBarPrice");
+const bookingBarMeta = document.querySelector("#bookingBarMeta");
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -37,7 +43,13 @@ function currentKayakCard() {
   return [...kayakCards].find((card) => card.dataset.kayakId === selectedKayakId);
 }
 
+function prettyDate(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+}
+
 function updateSelectionLine() {
+  updateBookingSummary();
   if (!calendarSelection) {
     return;
   }
@@ -45,13 +57,58 @@ function updateSelectionLine() {
     calendarSelection.textContent = "No date selected yet.";
     return;
   }
-  const [y, m, d] = selectedDate.split("-").map(Number);
-  const dateObj = new Date(y, m - 1, d);
-  const pretty = dateObj.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   const card = currentKayakCard();
   const name = card ? card.dataset.kayakName : "Kayak";
   const price = card ? ` · Rs ${card.dataset.kayakPrice}` : "";
-  calendarSelection.innerHTML = `<strong>${pretty}</strong> · ${name}<strong>${price}</strong>`;
+  calendarSelection.innerHTML = `<strong>${prettyDate(selectedDate)}</strong> · ${name}<strong>${price}</strong>`;
+}
+
+function updateBookingSummary() {
+  const card = currentKayakCard();
+  const rate = card ? Number(card.dataset.kayakPrice) : 0;
+  if (bookingBarPrice) {
+    bookingBarPrice.textContent = `Rs ${rate}`;
+  }
+  if (selectedDate) {
+    if (priceSummary) {
+      priceSummary.hidden = false;
+      summaryLine.textContent = `Rs ${rate} × 1 day`;
+      summaryTotal.textContent = `Rs ${rate}`;
+    }
+    if (bookingBarMeta) {
+      bookingBarMeta.textContent = prettyDate(selectedDate);
+    }
+  } else {
+    if (priceSummary) {
+      priceSummary.hidden = true;
+    }
+    if (bookingBarMeta) {
+      bookingBarMeta.textContent = "Pick a date to book";
+    }
+  }
+}
+
+// Mobile sticky bar: appears past the hero, hides while the form is on screen.
+if (bookingBar) {
+  const hero = document.querySelector(".hero");
+  const bookingSection = document.querySelector("#booking");
+  let pastHero = false;
+  let formVisible = false;
+  const syncBar = () => {
+    bookingBar.hidden = !pastHero || formVisible;
+  };
+  if (hero) {
+    new IntersectionObserver(([entry]) => {
+      pastHero = !entry.isIntersecting;
+      syncBar();
+    }).observe(hero);
+  }
+  if (bookingSection) {
+    new IntersectionObserver(([entry]) => {
+      formVisible = entry.isIntersecting;
+      syncBar();
+    }).observe(bookingSection);
+  }
 }
 
 function renderSkeleton() {
@@ -162,6 +219,7 @@ function selectKayak(card, options = {}) {
       bookingDateInput.value = "";
     }
   }
+  updateBookingSummary();
 
   kayakCards.forEach((kayakCard) => {
     const isSelected = kayakCard === card;

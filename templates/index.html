@@ -195,10 +195,14 @@
           Message
           <textarea name="notes" rows="4" placeholder="Preferred time, hotel, or WhatsApp number">{{ form_values.get('notes', '') }}</textarea>
         </label>
+        <div class="price-summary" id="priceSummary" hidden>
+          <span id="summaryLine">Rs 0 × 1 day</span>
+          <strong id="summaryTotal">Rs 0</strong>
+        </div>
         <div class="actions">
           <button class="button primary" type="submit">{{ icon('send') }}Confirm booking</button>
-          <button class="button disabled" type="button" disabled>Pay online soon</button>
         </div>
+        <p class="payment-note">{{ icon('shield-check', 16) }}No payment now — pay on arrival, cash or card.</p>
       </form>
     </section>
     <section class="location-faq" id="faq">
@@ -246,6 +250,14 @@
     </section>
     #}
   </main>
+
+  <div class="booking-bar" id="bookingBar" hidden>
+    <div class="booking-bar-info">
+      <strong id="bookingBarPrice">&nbsp;</strong>
+      <span id="bookingBarMeta">Pick a date to book</span>
+    </div>
+    <a class="button primary" href="#booking">Book</a>
+  </div>
 
   <footer>
     <div class="footer-grid">
