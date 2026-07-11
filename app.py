@@ -145,38 +145,25 @@ def init_db():
 
 
 def seed_kayaks(db):
+    # Seed starter kayaks only on a brand-new database. Once the fleet exists
+    # it belongs to the owner; restarts must never overwrite their edits.
+    if db.execute("SELECT COUNT(*) FROM kayaks").fetchone()[0]:
+        return
     for kayak in DEFAULT_KAYAKS:
-        existing = db.execute("SELECT id FROM kayaks WHERE name = ?", (kayak["name"],)).fetchone()
-        if existing:
-            db.execute(
-                """
-                UPDATE kayaks
-                SET tagline = ?, capacity = ?, price_per_day = ?, image_url = ?, active = 1
-                WHERE name = ?
-                """,
-                (
-                    kayak["tagline"],
-                    kayak["capacity"],
-                    kayak["price_per_day"],
-                    kayak["image_url"],
-                    kayak["name"],
-                ),
-            )
-        else:
-            db.execute(
-                """
-                INSERT INTO kayaks
-                    (name, tagline, capacity, price_per_day, image_url)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    kayak["name"],
-                    kayak["tagline"],
-                    kayak["capacity"],
-                    kayak["price_per_day"],
-                    kayak["image_url"],
-                ),
-            )
+        db.execute(
+            """
+            INSERT INTO kayaks
+                (name, tagline, capacity, price_per_day, image_url)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                kayak["name"],
+                kayak["tagline"],
+                kayak["capacity"],
+                kayak["price_per_day"],
+                kayak["image_url"],
+            ),
+        )
 
 
 def migrate_db(db):
