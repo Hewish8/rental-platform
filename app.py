@@ -37,9 +37,19 @@ SMTP_USERNAME = os.getenv("KAYAK_SMTP_USERNAME")
 SMTP_PASSWORD = os.getenv("KAYAK_SMTP_PASSWORD")
 SMTP_USE_TLS = os.getenv("KAYAK_SMTP_USE_TLS", "true").lower() == "true"
 ADMIN_TOKEN = os.getenv("KAYAK_ADMIN_TOKEN", "change-me")
+DEBUG = os.getenv("KAYAK_DEBUG", "false").lower() == "true"
+
+_PLACEHOLDER_SECRETS = {"", "dev-change-me", "change-this-to-a-long-random-secret"}
+SECRET_KEY = os.getenv("KAYAK_SECRET_KEY", "")
+if SECRET_KEY in _PLACEHOLDER_SECRETS and not DEBUG:
+    raise RuntimeError(
+        "KAYAK_SECRET_KEY is not set. Generate one with "
+        "'python -c \"import secrets; print(secrets.token_urlsafe(32))\"' and put it in .env, "
+        "or set KAYAK_DEBUG=true for local development."
+    )
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.getenv("KAYAK_SECRET_KEY", "dev-change-me")
+app.config["SECRET_KEY"] = SECRET_KEY or secrets.token_urlsafe(32)
 
 
 DEFAULT_KAYAKS = [
@@ -532,4 +542,4 @@ init_db()
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=DEBUG)
