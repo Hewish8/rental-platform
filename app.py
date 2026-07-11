@@ -271,6 +271,20 @@ def booked_dates(db, kayak_id, start, end):
     return booked
 
 
+def nearest_available_dates(db, kayak_id, around, count=3, horizon=45):
+    """Closest bookable dates to a requested day, nearest first, future-biased."""
+    suggestions = []
+    for offset in range(1, horizon + 1):
+        for candidate in (around + timedelta(days=offset), around - timedelta(days=offset)):
+            if candidate < date.today():
+                continue
+            if date_range_is_available(db, kayak_id, candidate, candidate):
+                suggestions.append(candidate)
+                if len(suggestions) >= count:
+                    return sorted(suggestions)
+    return sorted(suggestions)
+
+
 def smtp_is_configured(cfg):
     return bool(cfg["SMTP_HOST"] and cfg["OWNER_EMAIL"] and cfg["FROM_EMAIL"])
 
@@ -377,7 +391,7 @@ def queue_booking_emails(booking_id, booking, kayak):
 # --- Public routes ------------------------------------------------------
 
 
-def render_index(form_values=None, form_errors=None, status=200):
+def render_index(form_values=None, form_errors=None, status=200, date_suggestions=None):
     db = get_db()
     kayaks = db.execute("SELECT * FROM kayaks WHERE active = 1").fetchall()
     return (
@@ -389,6 +403,9 @@ def render_index(form_values=None, form_errors=None, status=200):
             owner_email=current_app.config["OWNER_EMAIL"],
             form_values=form_values or {},
             form_errors=form_errors or {},
+            date_suggestions=[
+                {"date": d.isoformat(), "label": d.strftime("%a %d %b")} for d in (date_suggestions or [])
+            ],
         ),
         status,
     )
@@ -476,11 +493,20 @@ def validate_booking_form(db, form):
     return values, errors, kayak, booking_date
 
 
+def conflict_suggestions(db, kayak, booking_date):
+    if kayak is None or booking_date is None:
+        return None
+    return nearest_available_dates(db, kayak["id"], booking_date)
+
+
 def book():
     db = get_db()
     values, errors, kayak, booking_date = validate_booking_form(db, request.form)
     if errors:
-        return render_index(values, errors, 400)
+        suggestions = None
+        if "already booked" in errors.get("booking_date", ""):
+            suggestions = conflict_suggestions(db, kayak, booking_date)
+        return render_index(values, errors, 400, suggestions)
 
     start_date = booking_date
     end_date = booking_date
@@ -507,7 +533,7 @@ def book():
             if not date_range_is_available(db, kayak_id, start_date, end_date):
                 db.rollback()
                 errors["booking_date"] = "That kayak was just booked on this date. Please pick another date."
-                return render_index(values, errors, 409)
+                return render_index(values, errors, 409, conflict_suggestions(db, kayak, booking_date))
             cursor = db.execute(
                 """
                 INSERT INTO bookings
@@ -538,7 +564,7 @@ def book():
 
     if booking_id is None:
         errors["booking_date"] = "That kayak was just booked on this date. Please pick another date."
-        return render_index(values, errors, 409)
+        return render_index(values, errors, 409, conflict_suggestions(db, kayak, booking_date))
 
     queue_booking_emails(booking_id, booking, kayak)
     if smtp_is_configured(current_app.config):

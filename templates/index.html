@@ -195,6 +195,14 @@
                  value="{{ form_values.get('booking_date', '') }}"
                  {% if form_errors.get('booking_date') %}aria-invalid="true" aria-describedby="error-booking-date"{% endif %}>
           {% if form_errors.get('booking_date') %}<span class="field-error" id="error-booking-date">{{ form_errors['booking_date'] }}</span>{% endif %}
+          {% if date_suggestions %}
+            <div class="date-suggestions">
+              <span>Nearest available:</span>
+              {% for suggestion in date_suggestions %}
+                <button type="button" class="date-chip" data-date="{{ suggestion.date }}">{{ suggestion.label }}</button>
+              {% endfor %}
+            </div>
+          {% endif %}
         </label>
         <label>
           Message

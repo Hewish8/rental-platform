@@ -162,6 +162,14 @@ def test_unknown_kayak_rejected(client):
     assert b"no longer available" in response.data
 
 
+def test_conflict_offers_nearest_available_dates(client):
+    client.post("/book", data=booking_form())
+    response = client.post("/book", data=booking_form(customer_name="Second Person"))
+    assert response.status_code == 400
+    assert b"date-chip" in response.data
+    assert response.data.count(b"date-chip") >= 3
+
+
 def test_booking_references_are_unique(app, client):
     for i in range(3):
         day = (date.today() + timedelta(days=20 + i)).isoformat()

@@ -409,3 +409,19 @@ document.querySelectorAll("[data-copy]").forEach((button) => {
     }
   });
 });
+
+
+// Conflict recovery: tapping a suggested date fills it in and clears the error.
+document.querySelectorAll(".date-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    selectedDate = chip.dataset.date;
+    if (bookingDateInput) {
+      bookingDateInput.value = selectedDate;
+      showFieldError(bookingDateInput, "");
+    }
+    document.querySelector(".date-suggestions")?.remove();
+    updateBookingSummary();
+    updateSelectionLine();
+    loadAvailability();
+  });
+});

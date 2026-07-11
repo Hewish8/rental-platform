@@ -1646,3 +1646,33 @@ dd,
   font-weight: 650;
   text-decoration: underline;
 }
+
+
+/* --- Date conflict suggestions --------------------------------------------- */
+
+.date-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.date-chip {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid rgba(0, 123, 131, 0.4);
+  border-radius: var(--radius-pill);
+  color: var(--sea);
+  background: var(--surface-tint);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background var(--ease-micro);
+}
+
+.date-chip:hover {
+  background: rgba(18, 160, 168, 0.2);
+}
