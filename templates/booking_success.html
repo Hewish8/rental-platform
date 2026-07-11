@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 
-{% block title %}Booking confirmed{% endblock %}
+{% block title %}You're booked! — Mahebourg Kayak{% endblock %}
 
 {% block body_class %}plain-page{% endblock %}
 
@@ -10,23 +10,54 @@
     {% include "_flash.html" %}
 
     <section class="confirmation-panel">
+      <div class="confirm-check" aria-hidden="true">
+        <svg viewBox="0 0 52 52" width="64" height="64">
+          <circle class="check-circle" cx="26" cy="26" r="24" fill="none" stroke="currentColor" stroke-width="3"/>
+          <path class="check-mark" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" d="M14 27l8 8 16-17"/>
+        </svg>
+      </div>
       <p class="eyebrow">Booking confirmed</p>
-      <h1>{{ booking.booking_reference }}</h1>
-      <p>Your kayak booking has been saved. Keep this reference for your trip.</p>
+      <h1>You're booked, {{ booking.customer_name.split(' ')[0] }}!</h1>
+      <p class="confirm-sub">{{ booking.kayak_name }} · {{ display_booking_date(booking) }}</p>
 
-      <dl class="booking-details">
+      <div class="reference-chip">
+        <span>Reference</span>
+        <strong id="referenceValue">{{ booking.booking_reference }}</strong>
+        <button class="chip-copy" type="button" data-copy="{{ booking.booking_reference }}" aria-label="Copy booking reference">{{ icon('copy', 15) }}</button>
+      </div>
+
+      <dl class="booking-details ticket">
         <div><dt>Kayak</dt><dd>{{ booking.kayak_name }}</dd></div>
+        <div><dt>Date</dt><dd>{{ display_booking_date(booking) }}</dd></div>
         <div><dt>Name</dt><dd>{{ booking.customer_name }}</dd></div>
-        <div><dt>Email</dt><dd>{{ booking.customer_email }}</dd></div>
         <div><dt>Phone</dt><dd>{{ booking.customer_phone or 'Not provided' }}</dd></div>
-        <div><dt>Booking date</dt><dd>{{ display_booking_date(booking) }}</dd></div>
-        <div><dt>Total</dt><dd>Rs {{ booking.total_price }}</dd></div>
-        <div><dt>Email alert</dt><dd>{{ booking.email_status|capitalize }}</dd></div>
+        <div class="ticket-total"><dt>Total — pay on arrival</dt><dd>Rs {{ booking.total_price }}</dd></div>
       </dl>
 
+      <div class="actions confirm-actions">
+        <a class="button primary" href="{{ url_for('booking_ics', reference=booking.booking_reference) }}">{{ icon('download') }}Add to calendar</a>
+        <a class="button secondary" href="https://www.google.com/maps/search/?api=1&query=Mahebourg+Waterfront+Mauritius" target="_blank" rel="noopener">{{ icon('map-pin') }}Get directions</a>
+        <a class="button secondary" href="https://wa.me/2305XXXXXXX?text=Hi%2C%20my%20booking%20reference%20is%20{{ booking.booking_reference }}">{{ icon('whatsapp') }}Message us</a>
+      </div>
+
+      {% if booking.email_status == 'failed' %}
+        <p class="email-note warning-note">{{ icon('mail', 16) }}We couldn't send your confirmation email — no problem, your booking is safe. Screenshot this page and keep your reference.</p>
+      {% else %}
+        <p class="email-note">{{ icon('mail', 16) }}A confirmation email is on its way to {{ booking.customer_email }}.</p>
+      {% endif %}
+
+      <div class="before-paddle">
+        <h2>Before your paddle</h2>
+        <ul>
+          <li>{{ icon('clock', 16) }}Arrive 15 minutes early at the Mahebourg waterfront</li>
+          <li>{{ icon('sun', 16) }}Bring sunscreen, a hat, water, and shoes that can get wet</li>
+          <li>{{ icon('shield-check', 16) }}Life jackets and a dry bag are provided</li>
+          <li>{{ icon('whatsapp', 16) }}Weather looking rough? We'll contact you to rebook for free</li>
+        </ul>
+      </div>
+
       <div class="actions">
-        <a class="button primary" href="{{ url_for('index') }}">{{ icon('arrow-left') }}Back to site</a>
-        <button class="button disabled" type="button" disabled>Pay online soon</button>
+        <a class="back-link" href="{{ url_for('index') }}">{{ icon('arrow-left', 15) }}Back to the site</a>
       </div>
     </section>
   </main>

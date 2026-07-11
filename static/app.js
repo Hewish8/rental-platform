@@ -395,3 +395,17 @@ if (reviewButton && stepDetails && stepReview) {
 
   backToDetails.addEventListener("click", () => setStep(1));
 }
+
+
+// Copy-to-clipboard chips (confirmation page reference)
+document.querySelectorAll("[data-copy]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(button.dataset.copy);
+      button.classList.add("copied");
+      setTimeout(() => button.classList.remove("copied"), 1200);
+    } catch (error) {
+      /* clipboard unavailable (http, old browser) — reference is visible anyway */
+    }
+  });
+});

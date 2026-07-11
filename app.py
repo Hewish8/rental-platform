@@ -565,6 +565,51 @@ def booking_success(reference):
     return render_template("booking_success.html", booking=booking, display_booking_date=display_booking_date)
 
 
+def booking_ics(reference):
+    db = get_db()
+    booking = db.execute(
+        """
+        SELECT bookings.*, kayaks.name AS kayak_name
+        FROM bookings
+        JOIN kayaks ON kayaks.id = bookings.kayak_id
+        WHERE booking_reference = ?
+        """,
+        (reference,),
+    ).fetchone()
+    if booking is None:
+        return redirect(url_for("index"))
+
+    start = parse_booking_date(booking["start_date"])
+    end_exclusive = parse_booking_date(booking["end_date"]) + timedelta(days=1)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ics = "\r\n".join(
+        [
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "PRODID:-//Mahebourg Lagoon Kayak Rentals//EN",
+            "BEGIN:VEVENT",
+            f"UID:{booking['booking_reference']}@mahebourg-kayak",
+            f"DTSTAMP:{stamp}",
+            f"DTSTART;VALUE=DATE:{start.strftime('%Y%m%d')}",
+            f"DTEND;VALUE=DATE:{end_exclusive.strftime('%Y%m%d')}",
+            f"SUMMARY:Kayak rental — {booking['kayak_name']}",
+            f"DESCRIPTION:Booking {booking['booking_reference']}. Pay on arrival (Rs {booking['total_price']}). Arrive 15 minutes early.",
+            "LOCATION:Mahebourg Waterfront\\, Mauritius",
+            "END:VEVENT",
+            "END:VCALENDAR",
+            "",
+        ]
+    )
+    return (
+        ics,
+        200,
+        {
+            "Content-Type": "text/calendar; charset=utf-8",
+            "Content-Disposition": f"attachment; filename=kayak-{booking['booking_reference']}.ics",
+        },
+    )
+
+
 # --- Admin routes -------------------------------------------------------
 
 
@@ -761,6 +806,7 @@ def create_app(config_overrides=None):
     app.add_url_rule("/api/availability", "availability", availability)
     app.add_url_rule("/book", "book", book, methods=["POST"])
     app.add_url_rule("/booking/<reference>", "booking_success", booking_success)
+    app.add_url_rule("/booking/<reference>/calendar.ics", "booking_ics", booking_ics)
     app.add_url_rule("/admin", "admin", admin)
     app.add_url_rule(
         "/admin/bookings/<int:booking_id>/update", "admin_update_booking", admin_update_booking, methods=["POST"]
