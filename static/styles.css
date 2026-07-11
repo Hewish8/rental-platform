@@ -1708,3 +1708,46 @@ dd,
     position: static;
   }
 }
+
+
+/* --- Login page ------------------------------------------------------------ */
+
+.login-page {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: var(--space-4);
+}
+
+.login-card {
+  width: min(400px, 100%);
+  padding: var(--space-6);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: var(--shadow-raised);
+}
+
+.login-form {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.login-hint {
+  margin: var(--space-4) 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.login-hint code {
+  background: rgba(23, 49, 45, 0.06);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+}
+
+.admin-actions-inline {
+  display: flex;
+  gap: var(--space-2);
+}

@@ -17,10 +17,11 @@ http://127.0.0.1:5000/
 
 ## Owner bookings dashboard
 
-Set `KAYAK_ADMIN_TOKEN` in `.env` to a long random value (never commit or share it), then open:
+Set `KAYAK_OWNER_EMAIL` and `KAYAK_OWNER_PASSWORD` in `.env` before the first
+run — this creates the owner account. Then sign in at:
 
 ```text
-http://127.0.0.1:5000/admin?token=YOUR_TOKEN_FROM_ENV
+http://127.0.0.1:5000/admin
 ```
 
 ## Enable real email notifications

@@ -4,12 +4,14 @@ import sqlite3
 import smtplib
 import threading
 from contextlib import closing
+from functools import wraps
 from datetime import date, datetime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
 
 from flask import (
     Flask,
+    abort,
     current_app,
     flash,
     g,
@@ -18,8 +20,10 @@ from flask import (
     render_template,
     request,
     send_from_directory,
+    session,
     url_for,
 )
+from werkzeug.security import check_password_hash, generate_password_hash
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -49,8 +53,8 @@ def default_config():
     return {
         "SECRET_KEY": os.getenv("KAYAK_SECRET_KEY", ""),
         "DATABASE": DATABASE,
-        "ADMIN_TOKEN": os.getenv("KAYAK_ADMIN_TOKEN", "change-me"),
         "OWNER_EMAIL": os.getenv("KAYAK_OWNER_EMAIL", "owner@example.com"),
+        "OWNER_PASSWORD": os.getenv("KAYAK_OWNER_PASSWORD"),
         "FROM_EMAIL": os.getenv("KAYAK_FROM_EMAIL") or os.getenv("KAYAK_OWNER_EMAIL", "owner@example.com"),
         "SMTP_HOST": os.getenv("KAYAK_SMTP_HOST"),
         "SMTP_PORT": int(os.getenv("KAYAK_SMTP_PORT", "587")),
@@ -107,7 +111,7 @@ def close_db(_error):
         db.close()
 
 
-def init_db(database):
+def init_db(database, owner_email=None, owner_password=None):
     with closing(connect_db(database)) as db:
         db.execute(
             """
@@ -143,8 +147,21 @@ def init_db(database):
             )
             """
         )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'staff',
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
         migrate_db(db)
         seed_kayaks(db)
+        bootstrap_owner(db, owner_email, owner_password)
         db.execute(
             "CREATE INDEX IF NOT EXISTS idx_bookings_kayak_dates ON bookings(kayak_id, start_date, end_date)"
         )
@@ -152,6 +169,23 @@ def init_db(database):
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_reference ON bookings(booking_reference)"
         )
         db.commit()
+
+
+def bootstrap_owner(db, owner_email, owner_password):
+    # First-run only: create the owner account from .env so the owner can log
+    # in, then manage further users from the dashboard.
+    if db.execute("SELECT COUNT(*) FROM users").fetchone()[0]:
+        return
+    if not (owner_email and owner_password):
+        return
+    db.execute(
+        "INSERT INTO users (email, password_hash, role, created_at) VALUES (?, ?, 'owner', ?)",
+        (
+            owner_email.strip().lower(),
+            generate_password_hash(owner_password),
+            datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        ),
+    )
 
 
 def seed_kayaks(db):
@@ -639,24 +673,69 @@ def booking_ics(reference):
 # --- Admin routes -------------------------------------------------------
 
 
-def admin_is_authorized():
-    admin_token = current_app.config["ADMIN_TOKEN"]
-    if admin_token == "change-me":
-        return False
-    return secrets.compare_digest(request.args.get("token", ""), admin_token)
+def csrf_token():
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_urlsafe(32)
+    return session["csrf_token"]
 
 
-def require_admin():
-    if not admin_is_authorized():
-        return "Unauthorized. Set KAYAK_ADMIN_TOKEN in .env and open /admin?token=YOUR_TOKEN.", 401
-    return None
+def check_csrf():
+    if request.method != "POST" or not current_app.config.get("CSRF_ENABLED", True):
+        return
+    token = session.get("csrf_token", "")
+    provided = request.form.get("_csrf", "")
+    if not token or not secrets.compare_digest(provided, token):
+        abort(400, description="Invalid or missing CSRF token. Please reload the page and try again.")
 
 
+def load_logged_in_user():
+    g.user = None
+    user_id = session.get("user_id")
+    if user_id:
+        g.user = get_db().execute(
+            "SELECT * FROM users WHERE id = ? AND active = 1", (user_id,)
+        ).fetchone()
+
+
+def admin_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if g.user is None:
+            return redirect(url_for("admin_login", next=request.path))
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+def admin_login():
+    if g.user is not None:
+        return redirect(url_for("admin"))
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        user = get_db().execute(
+            "SELECT * FROM users WHERE lower(email) = ? AND active = 1", (email,)
+        ).fetchone()
+        if user and check_password_hash(user["password_hash"], password):
+            session.clear()
+            session["user_id"] = user["id"]
+            session.permanent = True
+            next_path = request.args.get("next", "")
+            if not next_path.startswith("/admin"):
+                next_path = url_for("admin")
+            return redirect(next_path)
+        flash("Wrong email or password.", "error")
+    return render_template("login.html")
+
+
+def admin_logout():
+    session.clear()
+    flash("You are signed out.", "success")
+    return redirect(url_for("admin_login"))
+
+
+@admin_required
 def admin():
-    unauthorized = require_admin()
-    if unauthorized:
-        return unauthorized
-
     cfg = current_app.config
     db = get_db()
     bookings = db.execute(
@@ -672,7 +751,6 @@ def admin():
         "admin.html",
         bookings=bookings,
         kayaks=kayaks,
-        admin_token=cfg["ADMIN_TOKEN"],
         smtp_configured=smtp_is_configured(cfg),
         owner_email=cfg["OWNER_EMAIL"],
         smtp_host=cfg["SMTP_HOST"],
@@ -680,12 +758,8 @@ def admin():
     )
 
 
+@admin_required
 def admin_update_booking(booking_id):
-    unauthorized = require_admin()
-    if unauthorized:
-        return unauthorized
-
-    admin_token = current_app.config["ADMIN_TOKEN"]
     db = get_db()
     form = request.form
     try:
@@ -693,7 +767,7 @@ def admin_update_booking(booking_id):
         booking_date = parse_booking_date(form["booking_date"])
     except (KeyError, ValueError):
         flash("Booking could not be updated. Check the kayak and booking date.", "error")
-        return redirect(url_for("admin", token=admin_token))
+        return redirect(url_for("admin"))
 
     start_date = booking_date
     end_date = booking_date
@@ -702,14 +776,14 @@ def admin_update_booking(booking_id):
     booking = db.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
     if kayak is None or booking is None:
         flash("Booking could not be updated because the kayak or booking was not found.", "error")
-        return redirect(url_for("admin", token=admin_token))
+        return redirect(url_for("admin"))
 
     status = form.get("status", "confirmed")
     db.execute("BEGIN IMMEDIATE")
     if status == "confirmed" and not date_range_is_available(db, kayak_id, start_date, end_date, booking_id):
         db.rollback()
         flash("Booking could not be updated because those dates are already booked for that kayak.", "error")
-        return redirect(url_for("admin", token=admin_token))
+        return redirect(url_for("admin"))
 
     total_price = count_days(start_date, end_date) * kayak["price_per_day"]
     db.execute(
@@ -734,26 +808,20 @@ def admin_update_booking(booking_id):
     )
     db.commit()
     flash("Booking updated.", "success")
-    return redirect(url_for("admin", token=admin_token))
+    return redirect(url_for("admin"))
 
 
+@admin_required
 def admin_delete_booking(booking_id):
-    unauthorized = require_admin()
-    if unauthorized:
-        return unauthorized
-
     db = get_db()
     db.execute("DELETE FROM bookings WHERE id = ?", (booking_id,))
     db.commit()
     flash("Booking removed. The dates are available again.", "success")
-    return redirect(url_for("admin", token=current_app.config["ADMIN_TOKEN"]))
+    return redirect(url_for("admin"))
 
 
+@admin_required
 def admin_resend_email(booking_id):
-    unauthorized = require_admin()
-    if unauthorized:
-        return unauthorized
-
     cfg = current_app.config
     db = get_db()
     booking = db.execute(
@@ -767,7 +835,7 @@ def admin_resend_email(booking_id):
     ).fetchone()
     if booking is None:
         flash("Booking not found.", "error")
-        return redirect(url_for("admin", token=cfg["ADMIN_TOKEN"]))
+        return redirect(url_for("admin"))
 
     # Synchronous on purpose: the admin clicked the button and wants a verdict.
     try:
@@ -782,14 +850,11 @@ def admin_resend_email(booking_id):
         )
         db.commit()
         flash(f"Email failed again: {error}", "error")
-    return redirect(url_for("admin", token=cfg["ADMIN_TOKEN"]))
+    return redirect(url_for("admin"))
 
 
+@admin_required
 def admin_test_email():
-    unauthorized = require_admin()
-    if unauthorized:
-        return unauthorized
-
     cfg = current_app.config
     recipient = request.form.get("test_email", "").strip() or cfg["OWNER_EMAIL"]
     try:
@@ -803,7 +868,7 @@ def admin_test_email():
         flash(f"Test email sent to {recipient}.", "success")
     except Exception as error:
         flash(f"Test email failed: {error}", "error")
-    return redirect(url_for("admin", token=cfg["ADMIN_TOKEN"]))
+    return redirect(url_for("admin"))
 
 
 # --- App factory --------------------------------------------------------
@@ -825,6 +890,11 @@ def create_app(config_overrides=None):
         )
 
     app.config["TEMPLATES_AUTO_RELOAD"] = True
+    app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
+    app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
+    app.jinja_env.globals["csrf_token"] = csrf_token
+    app.before_request(check_csrf)
+    app.before_request(load_logged_in_user)
     app.teardown_appcontext(close_db)
 
     app.add_url_rule("/", "index", index)
@@ -833,6 +903,8 @@ def create_app(config_overrides=None):
     app.add_url_rule("/book", "book", book, methods=["POST"])
     app.add_url_rule("/booking/<reference>", "booking_success", booking_success)
     app.add_url_rule("/booking/<reference>/calendar.ics", "booking_ics", booking_ics)
+    app.add_url_rule("/admin/login", "admin_login", admin_login, methods=["GET", "POST"])
+    app.add_url_rule("/admin/logout", "admin_logout", admin_logout, methods=["POST"])
     app.add_url_rule("/admin", "admin", admin)
     app.add_url_rule(
         "/admin/bookings/<int:booking_id>/update", "admin_update_booking", admin_update_booking, methods=["POST"]
@@ -845,7 +917,7 @@ def create_app(config_overrides=None):
     )
     app.add_url_rule("/admin/test-email", "admin_test_email", admin_test_email, methods=["POST"])
 
-    init_db(app.config["DATABASE"])
+    init_db(app.config["DATABASE"], app.config["OWNER_EMAIL"], app.config["OWNER_PASSWORD"])
     return app
 
 

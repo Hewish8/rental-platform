@@ -11,7 +11,13 @@
         <p class="eyebrow">Owner dashboard</p>
         <h1>Bookings</h1>
       </div>
-      <a class="button primary" href="{{ url_for('index') }}">View website</a>
+      <div class="admin-actions-inline">
+        <a class="button primary" href="{{ url_for('index') }}">View website</a>
+        <form method="post" action="{{ url_for('admin_logout') }}">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <button class="button secondary" type="submit">Sign out</button>
+        </form>
+      </div>
     </header>
 
     {% if not smtp_configured %}
@@ -27,7 +33,8 @@
           SMTP: {{ smtp_host or 'Not configured' }}:{{ smtp_port }}
           {% if smtp_configured %}| Ready to test{% else %}| Missing settings in .env{% endif %}
         </p>
-        <form class="admin-form" method="post" action="{{ url_for('admin_test_email', token=admin_token) }}">
+        <form class="admin-form" method="post" action="{{ url_for('admin_test_email') }}">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
           <label>
             Send test to
             <input name="test_email" type="email" value="{{ owner_email }}" placeholder="your-email@example.com">
@@ -63,7 +70,8 @@
                 <span>Created {{ booking.created_at }}</span>
               </td>
               <td>
-                <form id="booking-{{ booking.id }}-update" method="post" action="{{ url_for('admin_update_booking', booking_id=booking.id, token=admin_token) }}">
+                <form id="booking-{{ booking.id }}-update" method="post" action="{{ url_for('admin_update_booking', booking_id=booking.id) }}">
+                  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
                   <label>
                     Name
                     <input required name="customer_name" value="{{ booking.customer_name }}">
@@ -109,14 +117,16 @@
               <td class="email-{{ booking.email_status }}">
                 {{ booking.email_status }}
                 {% if booking.email_error %}<span title="{{ booking.email_error }}">{{ booking.email_error }}</span>{% endif %}
-                <form method="post" action="{{ url_for('admin_resend_email', booking_id=booking.id, token=admin_token) }}">
+                <form method="post" action="{{ url_for('admin_resend_email', booking_id=booking.id) }}">
+                  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
                   <button class="button resend" type="submit">Resend email</button>
                 </form>
               </td>
               <td>
                 <div class="admin-actions">
                   <button class="button primary" type="submit" form="booking-{{ booking.id }}-update">Save</button>
-                  <form method="post" action="{{ url_for('admin_delete_booking', booking_id=booking.id, token=admin_token) }}">
+                  <form method="post" action="{{ url_for('admin_delete_booking', booking_id=booking.id) }}">
+                    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
                     <button class="button danger" type="submit" onclick="return confirm('Remove this booking?')">Remove</button>
                   </form>
                 </div>

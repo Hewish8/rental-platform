@@ -154,6 +154,7 @@
         <p>The booking is saved immediately, that day becomes unavailable, and email alerts are sent to both the owner and customer.</p>
       </div>
       <form class="booking-form" method="post" action="{{ url_for('book') }}" novalidate>
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
         <div class="form-progress" id="formProgress" hidden aria-hidden="true">
           <span class="progress-dot is-active" data-step="1"></span>
           <span class="progress-dot" data-step="2"></span>
