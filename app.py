@@ -329,9 +329,17 @@ def assets(filename):
 @app.route("/api/availability")
 def availability():
     db = get_db()
-    kayak_id = int(request.args.get("kayak_id", 1))
-    start = parse_booking_date(request.args.get("start", date.today().isoformat()))
-    days = min(int(request.args.get("days", 30)), 90)
+    try:
+        kayak_id = int(request.args.get("kayak_id", 1))
+        start = parse_booking_date(request.args.get("start", date.today().isoformat()))
+        days = int(request.args.get("days", 30))
+    except ValueError:
+        return jsonify({"error": "Invalid kayak_id, start, or days parameter."}), 400
+
+    days = max(1, min(days, 90))
+    kayak = db.execute("SELECT id FROM kayaks WHERE id = ? AND active = 1", (kayak_id,)).fetchone()
+    if kayak is None:
+        return jsonify({"error": "Unknown kayak."}), 404
 
     availability_days = []
     for offset in range(days):
@@ -362,7 +370,7 @@ def book():
     end_date = booking_date
 
     if booking_date < date.today():
-        return redirect(url_for("index", error="invalid-date"))
+        return redirect(url_for("index", error="past-date"))
 
     kayak = db.execute("SELECT * FROM kayaks WHERE id = ? AND active = 1", (kayak_id,)).fetchone()
     if kayak is None or not date_is_available(db, kayak_id, start_date, end_date):

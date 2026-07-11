@@ -41,7 +41,13 @@
       {% endfor %}
     {% endwith %}
     {% if request.args.get('error') %}
-      {% set _ = popup_messages.append(('error', 'Please check the booking details. The selected kayak may already be booked.')) %}
+      {% set error_messages = {
+        'invalid-date': 'Please pick a valid booking date.',
+        'past-date': 'That date has already passed. Please pick an upcoming date.',
+        'unavailable': 'That kayak is already booked on the selected date. Please choose another date or kayak.',
+        'contact': 'Please enter your full name and a valid email address so we can confirm your booking.'
+      } %}
+      {% set _ = popup_messages.append(('error', error_messages.get(request.args.get('error'), 'Please check the booking details.'))) %}
     {% endif %}
     {% if not smtp_configured %}
       {% set _ = popup_messages.append(('warning', 'Email is not configured yet. Bookings will still be saved, but real email alerts need SMTP settings in the .env file.')) %}
