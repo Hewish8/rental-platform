@@ -285,6 +285,30 @@ def test_audit_log_records_actions(app, client, admin_client):
     assert b"cancelled" in page.data
 
 
+def test_payment_recording_and_due_calculation(app, client, admin_client):
+    client.post("/book", data=booking_form())
+    booking_id = db_rows(app, "SELECT id FROM bookings")[0][0]
+
+    admin_client.post(f"/admin/bookings/{booking_id}/payments", data={"amount": "700", "method": "cash"})
+    page = admin_client.get("/admin")
+    assert b"Due Rs 500" in page.data
+
+    admin_client.post(f"/admin/bookings/{booking_id}/payments", data={"amount": "500", "method": "card"})
+    page = admin_client.get("/admin")
+    assert b">Paid<" in page.data
+
+    admin_client.post(
+        f"/admin/bookings/{booking_id}/payments",
+        data={"amount": "1200", "method": "cash", "kind": "refund", "note": "weather cancel"},
+    )
+    page = admin_client.get("/admin")
+    assert b"Due Rs 1200" in page.data
+
+    rejected = admin_client.post(f"/admin/bookings/{booking_id}/payments", data={"amount": "-5"})
+    assert rejected.status_code == 302
+    assert db_rows(app, "SELECT COUNT(*) FROM payments")[0][0] == 3
+
+
 # --- CSRF ------------------------------------------------------------------
 
 

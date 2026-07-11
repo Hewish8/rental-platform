@@ -161,6 +161,21 @@ def init_db(database, owner_email=None, owner_password=None):
         )
         db.execute(
             """
+            CREATE TABLE IF NOT EXISTS payments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                booking_id INTEGER NOT NULL,
+                amount INTEGER NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'payment',
+                method TEXT NOT NULL,
+                note TEXT,
+                recorded_by TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (booking_id) REFERENCES bookings(id)
+            )
+            """
+        )
+        db.execute(
+            """
             CREATE TABLE IF NOT EXISTS audit_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_email TEXT NOT NULL,
@@ -698,6 +713,17 @@ def booking_ics(reference):
 # --- Admin routes -------------------------------------------------------
 
 
+def payments_by_booking(db):
+    rows = db.execute(
+        """
+        SELECT booking_id,
+               COALESCE(SUM(CASE WHEN kind = 'refund' THEN -amount ELSE amount END), 0) AS paid
+        FROM payments GROUP BY booking_id
+        """
+    ).fetchall()
+    return {row["booking_id"]: row["paid"] for row in rows}
+
+
 def record_audit(db, action, entity, entity_id=None, details=None):
     """Append-only trail of who changed what. Committed with the caller's commit."""
     user = getattr(g, "user", None)
@@ -788,10 +814,12 @@ def admin():
         """
     ).fetchall()
     kayaks = db.execute("SELECT * FROM kayaks WHERE active = 1 ORDER BY id").fetchall()
+    paid_map = payments_by_booking(db)
     return render_template(
         "admin.html",
         bookings=bookings,
         kayaks=kayaks,
+        paid_map=paid_map,
         smtp_configured=smtp_is_configured(cfg),
         owner_email=cfg["OWNER_EMAIL"],
         smtp_host=cfg["SMTP_HOST"],
@@ -913,6 +941,43 @@ def admin_resend_email(booking_id):
 
 
 @admin_required
+def admin_record_payment(booking_id):
+    db = get_db()
+    booking = db.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    if booking is None:
+        flash("Booking not found.", "error")
+        return redirect(url_for("admin"))
+    try:
+        amount = int(request.form["amount"])
+        if amount <= 0:
+            raise ValueError
+    except (KeyError, ValueError):
+        flash("Enter a positive amount in rupees.", "error")
+        return redirect(url_for("admin"))
+    kind = "refund" if request.form.get("kind") == "refund" else "payment"
+    method = request.form.get("method", "cash")
+    if method not in ("cash", "card", "transfer"):
+        method = "cash"
+    note = request.form.get("note", "").strip()
+    db.execute(
+        "INSERT INTO payments (booking_id, amount, kind, method, note, recorded_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            booking_id,
+            amount,
+            kind,
+            method,
+            note,
+            g.user["email"],
+            datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        ),
+    )
+    record_audit(db, f"{kind}-recorded", "booking", booking_id, f"Rs {amount} {method} {note}".strip())
+    db.commit()
+    flash(f"{'Refund' if kind == 'refund' else 'Payment'} of Rs {amount} recorded for {booking['booking_reference']}.", "success")
+    return redirect(url_for("admin"))
+
+
+@admin_required
 def admin_audit():
     db = get_db()
     entries = db.execute(
@@ -982,6 +1047,9 @@ def create_app(config_overrides=None):
     )
     app.add_url_rule(
         "/admin/bookings/<int:booking_id>/resend-email", "admin_resend_email", admin_resend_email, methods=["POST"]
+    )
+    app.add_url_rule(
+        "/admin/bookings/<int:booking_id>/payments", "admin_record_payment", admin_record_payment, methods=["POST"]
     )
     app.add_url_rule("/admin/audit", "admin_audit", admin_audit)
     app.add_url_rule("/admin/test-email", "admin_test_email", admin_test_email, methods=["POST"])

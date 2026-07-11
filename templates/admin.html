@@ -69,6 +69,27 @@
               <td>
                 <strong>{{ booking.booking_reference or booking.id }}</strong>
                 <span>Created {{ booking.created_at }}</span>
+                {% set paid = paid_map.get(booking.id, 0) %}
+                {% set due = (booking.total_price or 0) - paid %}
+                {% if due <= 0 %}
+                  <span class="pay-chip paid">Paid</span>
+                {% else %}
+                  <span class="pay-chip due">Due Rs {{ due }}</span>
+                {% endif %}
+                <form class="payment-form" method="post" action="{{ url_for('admin_record_payment', booking_id=booking.id) }}">
+                  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                  <input name="amount" type="number" min="1" placeholder="Rs" required aria-label="Amount">
+                  <select name="method" aria-label="Method">
+                    <option value="cash">cash</option>
+                    <option value="card">card</option>
+                    <option value="transfer">transfer</option>
+                  </select>
+                  <select name="kind" aria-label="Kind">
+                    <option value="payment">payment</option>
+                    <option value="refund">refund</option>
+                  </select>
+                  <button class="button resend" type="submit">Record</button>
+                </form>
               </td>
               <td>
                 <form id="booking-{{ booking.id }}-update" method="post" action="{{ url_for('admin_update_booking', booking_id=booking.id) }}">
