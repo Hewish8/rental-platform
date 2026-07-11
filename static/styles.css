@@ -1398,3 +1398,80 @@ dd,
     position: static;
   }
 }
+
+
+/* --- Two-step checkout ----------------------------------------------------- */
+
+.form-progress {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.progress-dot {
+  width: 2rem;
+  height: 0.35rem;
+  border-radius: var(--radius-pill);
+  background: rgba(23, 49, 45, 0.12);
+  transition: background var(--ease-micro);
+}
+
+.progress-dot.is-active {
+  background: var(--sea);
+}
+
+.form-step {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.review-step .eyebrow {
+  margin-bottom: 0;
+}
+
+.review-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fbfbf8;
+}
+
+.review-details .review-total {
+  grid-column: 1 / -1;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.review-total dd {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--sea);
+}
+
+.button.secondary {
+  color: var(--ink);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.button.secondary:hover {
+  border-color: var(--sea);
+}
+
+.whatsapp-alt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.whatsapp-alt a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #1fa855;
+  font-weight: 650;
+  text-decoration: underline;
+}

@@ -331,3 +331,67 @@ document.querySelectorAll(".toast").forEach((toast) => {
     setTimeout(() => dismissToast(toast), 6000);
   }
 });
+
+
+// --- Two-step checkout: details -> review -> confirm ----------------------
+
+const formProgress = document.querySelector("#formProgress");
+const stepDetails = document.querySelector("#formStepDetails");
+const stepReview = document.querySelector("#formStepReview");
+const reviewButton = document.querySelector("#reviewButton");
+const submitDirect = document.querySelector("#submitDirect");
+const backToDetails = document.querySelector("#backToDetails");
+
+function setStep(step) {
+  const inReview = step === 2;
+  stepDetails.hidden = inReview;
+  stepReview.hidden = !inReview;
+  formProgress.querySelectorAll(".progress-dot").forEach((dot) => {
+    dot.classList.toggle("is-active", Number(dot.dataset.step) <= step);
+  });
+  if (inReview) {
+    stepReview.querySelector("button")?.focus();
+  }
+}
+
+function fillReview() {
+  const form = document.querySelector(".booking-form");
+  const card = currentKayakCard();
+  const rate = card ? Number(card.dataset.kayakPrice) : 0;
+  document.querySelector("#reviewKayak").textContent = card ? card.dataset.kayakName : "";
+  document.querySelector("#reviewDate").textContent = selectedDate ? prettyDate(selectedDate) : "";
+  document.querySelector("#reviewName").textContent = form.customer_name.value.trim();
+  document.querySelector("#reviewEmail").textContent = form.customer_email.value.trim();
+  document.querySelector("#reviewPhone").textContent = form.customer_phone.value.trim() || "Not provided";
+  document.querySelector("#reviewTotal").textContent = `Rs ${rate}`;
+}
+
+if (reviewButton && stepDetails && stepReview) {
+  // JS available: enhance into the two-step flow.
+  reviewButton.hidden = false;
+  submitDirect.hidden = true;
+  formProgress.hidden = false;
+
+  reviewButton.addEventListener("click", () => {
+    let firstInvalid = null;
+    Object.entries(fieldValidators).forEach(([name, validate]) => {
+      const input = document.querySelector(`.booking-form [name='${name}']`);
+      if (!input) {
+        return;
+      }
+      const message = validate(input.value);
+      showFieldError(input, message);
+      if (message && !firstInvalid) {
+        firstInvalid = input;
+      }
+    });
+    if (firstInvalid) {
+      firstInvalid.focus();
+      return;
+    }
+    fillReview();
+    setStep(2);
+  });
+
+  backToDetails.addEventListener("click", () => setStep(1));
+}

@@ -156,7 +156,12 @@
         <p>The booking is saved immediately, that day becomes unavailable, and email alerts are sent to both the owner and customer.</p>
       </div>
       <form class="booking-form" method="post" action="{{ url_for('book') }}" novalidate>
+        <div class="form-progress" id="formProgress" hidden aria-hidden="true">
+          <span class="progress-dot is-active" data-step="1"></span>
+          <span class="progress-dot" data-step="2"></span>
+        </div>
         <input type="hidden" name="kayak_id" value="{{ form_values.get('kayak_id') or (kayaks[0].id if kayaks else 1) }}">
+        <div class="form-step" id="formStepDetails">
         <button class="selected-kayak" id="selectedKayakShortcut" type="button">
           <span>Selected kayak</span>
           <strong>
@@ -200,9 +205,29 @@
           <strong id="summaryTotal">Rs 0</strong>
         </div>
         <div class="actions">
-          <button class="button primary" type="submit">{{ icon('send') }}Confirm booking</button>
+          <button class="button primary" id="reviewButton" type="button" hidden>{{ icon('chevron-right') }}Review booking</button>
+          <button class="button primary" id="submitDirect" type="submit">{{ icon('send') }}Confirm booking</button>
         </div>
+        </div>
+
+        <div class="form-step review-step" id="formStepReview" hidden>
+          <p class="eyebrow">Almost done — check your booking</p>
+          <dl class="review-details">
+            <div><dt>Kayak</dt><dd id="reviewKayak"></dd></div>
+            <div><dt>Date</dt><dd id="reviewDate"></dd></div>
+            <div><dt>Name</dt><dd id="reviewName"></dd></div>
+            <div><dt>Email</dt><dd id="reviewEmail"></dd></div>
+            <div><dt>Phone</dt><dd id="reviewPhone"></dd></div>
+            <div class="review-total"><dt>Total</dt><dd id="reviewTotal"></dd></div>
+          </dl>
+          <div class="actions">
+            <button class="button secondary" id="backToDetails" type="button">{{ icon('arrow-left') }}Edit details</button>
+            <button class="button primary" type="submit">{{ icon('send') }}Confirm booking</button>
+          </div>
+        </div>
+
         <p class="payment-note">{{ icon('shield-check', 16) }}No payment now — pay on arrival, cash or card.</p>
+        <p class="whatsapp-alt">Prefer WhatsApp? <a href="https://wa.me/2305XXXXXXX?text=Hi%2C%20I%27d%20like%20to%20book%20a%20kayak">{{ icon('whatsapp', 16) }} Message us your booking</a></p>
       </form>
     </section>
     <section class="location-faq" id="faq">

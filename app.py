@@ -753,6 +753,7 @@ def create_app(config_overrides=None):
             "or set KAYAK_DEBUG=true for local development."
         )
 
+    app.config["TEMPLATES_AUTO_RELOAD"] = True
     app.teardown_appcontext(close_db)
 
     app.add_url_rule("/", "index", index)
