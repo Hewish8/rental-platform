@@ -383,28 +383,45 @@ def book():
     if not booking["customer_name"] or "@" not in booking["customer_email"]:
         return redirect(url_for("index", error="contact"))
 
-    cursor = db.execute(
-        """
-        INSERT INTO bookings
-            (kayak_id, booking_reference, customer_name, customer_email, customer_phone,
-             start_date, end_date, notes, total_price, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            booking["kayak_id"],
-            booking["booking_reference"],
-            booking["customer_name"],
-            booking["customer_email"],
-            booking["customer_phone"],
-            booking["start_date"],
-            booking["end_date"],
-            booking["notes"],
-            booking["total_price"],
-            datetime.utcnow().isoformat(timespec="seconds"),
-        ),
-    )
-    db.commit()
-    booking_id = cursor.lastrowid
+    # Check availability and insert atomically: BEGIN IMMEDIATE takes the write
+    # lock up front so two simultaneous requests cannot both pass the check.
+    booking_id = None
+    for _attempt in range(2):
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            if not date_range_is_available(db, kayak_id, start_date, end_date):
+                db.rollback()
+                return redirect(url_for("index", error="unavailable"))
+            cursor = db.execute(
+                """
+                INSERT INTO bookings
+                    (kayak_id, booking_reference, customer_name, customer_email, customer_phone,
+                     start_date, end_date, notes, total_price, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    booking["kayak_id"],
+                    booking["booking_reference"],
+                    booking["customer_name"],
+                    booking["customer_email"],
+                    booking["customer_phone"],
+                    booking["start_date"],
+                    booking["end_date"],
+                    booking["notes"],
+                    booking["total_price"],
+                    datetime.utcnow().isoformat(timespec="seconds"),
+                ),
+            )
+            db.commit()
+            booking_id = cursor.lastrowid
+            break
+        except sqlite3.IntegrityError:
+            # Reference collision on the unique index: retry once with a new one.
+            db.rollback()
+            booking["booking_reference"] = generate_booking_reference()
+
+    if booking_id is None:
+        return redirect(url_for("index", error="unavailable"))
 
     try:
         send_booking_emails(booking, kayak)
@@ -504,7 +521,9 @@ def admin_update_booking(booking_id):
         return redirect(url_for("admin", token=ADMIN_TOKEN))
 
     status = form.get("status", "confirmed")
+    db.execute("BEGIN IMMEDIATE")
     if status == "confirmed" and not date_range_is_available(db, kayak_id, start_date, end_date, booking_id):
+        db.rollback()
         flash("Booking could not be updated because those dates are already booked for that kayak.", "error")
         return redirect(url_for("admin", token=ADMIN_TOKEN))
 
