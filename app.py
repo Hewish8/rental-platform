@@ -66,21 +66,21 @@ DEFAULT_KAYAKS = [
         "tagline": "A stable sit-on-top kayak for calm turquoise water and scenic paddles.",
         "capacity": "1 adult",
         "price_per_day": 1200,
-        "image_url": "https://commons.wikimedia.org/wiki/Special:Redirect/file/Man%20paddling%20on%20kayak%20in%20turquoise%20water%20%2852829435254%29.jpg?width=1200",
+        "image_url": "/assets/KayakTurquoise.jpg",
     },
     {
         "name": "Aigrettes Cruiser",
         "tagline": "Light single kayak for relaxed paddles near Ile aux Aigrettes.",
         "capacity": "1 adult",
         "price_per_day": 1100,
-        "image_url": "https://images.unsplash.com/photo-1571068316344-75bc76f77890?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "/assets/KayakSingle.jpg",
     },
     {
         "name": "Phares Tandem",
         "tagline": "Roomier kayak for two people heading toward the lighthouse views.",
         "capacity": "2 adults",
         "price_per_day": 1800,
-        "image_url": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "/assets/BeachTandem.jpg",
     },
 ]
 

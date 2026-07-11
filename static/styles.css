@@ -119,8 +119,18 @@ a {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 1.1rem;
+  gap: 0.4rem;
   color: rgba(255, 255, 255, 0.86);
+}
+
+.nav-links a:not(.nav-cta) {
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--radius-sm);
+}
+
+.nav-links a:not(.nav-cta):hover {
+  color: white;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .nav-cta {
@@ -1675,4 +1685,26 @@ dd,
 
 .date-chip:hover {
   background: rgba(18, 160, 168, 0.2);
+}
+
+
+/* --- Tablet ------------------------------------------------------------- */
+
+@media (max-width: 1024px) and (min-width: 781px) {
+  .fleet {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .booking-section,
+  .location-faq {
+    grid-template-columns: 1fr;
+  }
+
+  .booking-form {
+    position: static;
+  }
+
+  .location-card {
+    position: static;
+  }
 }

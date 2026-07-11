@@ -2,8 +2,6 @@
 {% from "_icons.html" import icon %}
 
 {% block head %}
-  <link rel="preconnect" href="https://upload.wikimedia.org">
-  <link rel="preconnect" href="https://commons.wikimedia.org">
   <script defer src="{{ url_for('static', filename='app.js') }}"></script>
 {% endblock %}
 
@@ -53,15 +51,15 @@
 
     <section class="lagoon-strip" aria-label="Mahebourg lagoon views">
       <figure>
-        <img src="{{ url_for('assets', filename='IleAuxAigrettes.jpeg') }}" alt="Ile aux Aigrettes in turquoise Mahebourg lagoon">
+        <img src="{{ url_for('assets', filename='IleAuxAigrettes.jpeg') }}" alt="Ile aux Aigrettes in turquoise Mahebourg lagoon" loading="lazy" width="1200" height="800">
         <figcaption>Ile aux Aigrettes</figcaption>
       </figure>
       <figure>
-        <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/Mouchoir%20Rouge%20Mahebourg.jpg?width=1000" alt="Mouchoir Rouge islet in Mahebourg">
+        <img src="{{ url_for('assets', filename='MouchoirRouge.jpg') }}" alt="Mouchoir Rouge islet in Mahebourg" loading="lazy" width="780" height="1040">
         <figcaption>Mouchoir Rouge</figcaption>
       </figure>
       <figure>
-        <img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/Leuchtturm%20%C3%8Ele%20aux%20Fouquets.jpg?width=1400" alt="Ile aux Phares lighthouse on Ile aux Fouquets">
+        <img src="{{ url_for('assets', filename='IleAuxPhares.jpg') }}" alt="Ile aux Phares lighthouse on Ile aux Fouquets" loading="lazy" width="1710" height="928">
         <figcaption>Ile aux Phares</figcaption>
       </figure>
     </section>
@@ -106,7 +104,7 @@
             data-kayak-price="{{ kayak.price_per_day }}"
             aria-pressed="{{ 'true' if loop.first else 'false' }}"
           >
-            <img src="{{ kayak.image_url }}" alt="{{ kayak.name }}">
+            <img src="{{ kayak.image_url }}" alt="{{ kayak.name }}" loading="lazy" width="1200" height="750">
             <div class="card-body">
               <div>
                 <h3>{{ kayak.name }}</h3>
