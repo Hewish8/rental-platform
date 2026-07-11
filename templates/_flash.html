@@ -1,0 +1,23 @@
+{# Renders flash messages. Pages may pre-seed `popup_messages` with extra
+   (category, message) tuples before including this partial. #}
+{% set popup_messages = popup_messages if popup_messages is defined else [] %}
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for category, message in messages %}
+    {% if category in ['error', 'warning'] %}
+      {% set _ = popup_messages.append((category, message)) %}
+    {% else %}
+      <div class="notice {{ category }}">{{ message }}</div>
+    {% endif %}
+  {% endfor %}
+{% endwith %}
+{% if popup_messages %}
+  <div class="alert-popup is-open" id="alertPopup" role="alertdialog" aria-modal="true" aria-labelledby="alertPopupTitle">
+    <div class="alert-popup-card {{ popup_messages[0][0] }}">
+      <button class="alert-popup-close" type="button" aria-label="Close alert" data-popup-close>&times;</button>
+      <p class="eyebrow" id="alertPopupTitle">{{ 'Warning' if popup_messages[0][0] == 'warning' else 'Error' }}</p>
+      {% for category, message in popup_messages %}
+        <p class="alert-popup-message">{{ message }}</p>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}

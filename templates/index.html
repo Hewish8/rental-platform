@@ -1,16 +1,13 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Mahebourg Lagoon Kayak Rentals</title>
+{% extends "base.html" %}
+
+{% block head %}
   <link rel="preconnect" href="https://upload.wikimedia.org">
   <link rel="preconnect" href="https://commons.wikimedia.org">
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   <script defer src="https://unpkg.com/lucide@latest"></script>
   <script defer src="{{ url_for('static', filename='app.js') }}"></script>
-</head>
-<body>
+{% endblock %}
+
+{% block body %}
   <header class="hero" id="top">
     <nav class="nav">
       <a class="brand" href="#top">Mahebourg Kayak</a>
@@ -31,15 +28,6 @@
 
   <main>
     {% set popup_messages = [] %}
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% for category, message in messages %}
-        {% if category in ['error', 'warning'] %}
-          {% set _ = popup_messages.append((category, message)) %}
-        {% else %}
-          <div class="notice {{ category }}">{{ message }}</div>
-        {% endif %}
-      {% endfor %}
-    {% endwith %}
     {% if request.args.get('error') %}
       {% set error_messages = {
         'invalid-date': 'Please pick a valid booking date.',
@@ -52,17 +40,7 @@
     {% if not smtp_configured %}
       {% set _ = popup_messages.append(('warning', 'Email is not configured yet. Bookings will still be saved, but real email alerts need SMTP settings in the .env file.')) %}
     {% endif %}
-    {% if popup_messages %}
-      <div class="alert-popup is-open" id="alertPopup" role="alertdialog" aria-modal="true" aria-labelledby="alertPopupTitle">
-        <div class="alert-popup-card {{ popup_messages[0][0] }}">
-          <button class="alert-popup-close" type="button" aria-label="Close alert" data-popup-close>&times;</button>
-          <p class="eyebrow" id="alertPopupTitle">{{ 'Warning' if popup_messages[0][0] == 'warning' else 'Error' }}</p>
-          {% for category, message in popup_messages %}
-            <p class="alert-popup-message">{{ message }}</p>
-          {% endfor %}
-        </div>
-      </div>
-    {% endif %}
+    {% include "_flash.html" %}
 
     <section class="intro">
       <div>
@@ -180,5 +158,4 @@
     <p><a href="{{ url_for('admin') }}">Owner bookings</a></p>
     <p>Images include Wikimedia Commons media for Ile aux Aigrettes, Mouchoir Rouge by Blacadeyemi, Ile aux Fouquets by Happolati, and kayak photography by Jernej Furman.</p>
   </footer>
-</body>
-</html>
+{% endblock %}
