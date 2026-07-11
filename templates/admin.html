@@ -14,6 +14,9 @@
       <a class="button primary" href="{{ url_for('index') }}">View website</a>
     </header>
 
+    {% if not smtp_configured %}
+      <div class="notice warning">Email is not configured. Bookings are still saved, but confirmation emails need SMTP settings in .env.</div>
+    {% endif %}
     {% include "_flash.html" %}
 
     <section class="admin-tools">

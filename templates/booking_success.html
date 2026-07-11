@@ -31,3 +31,7 @@
     </section>
   </main>
 {% endblock %}
+
+{% block scripts %}
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}

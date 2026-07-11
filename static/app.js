@@ -8,8 +8,6 @@ const selectedKayakName = document.querySelector("#selectedKayakName");
 const selectedKayakPrice = document.querySelector("#selectedKayakPrice");
 const selectedKayakShortcut = document.querySelector("#selectedKayakShortcut");
 const kayakCards = document.querySelectorAll(".kayak-card");
-const alertPopup = document.querySelector("#alertPopup");
-const alertPopupClose = document.querySelector("[data-popup-close]");
 
 let calendarStart = new Date();
 let selectedKayakId = kayakInput?.value || "1";
@@ -96,18 +94,14 @@ window.addEventListener("load", () => {
   loadAvailability();
 });
 
-function closeAlertPopup() {
-  alertPopup?.classList.remove("is-open");
+function dismissToast(toast) {
+  toast.classList.add("is-leaving");
+  setTimeout(() => toast.remove(), 350);
 }
 
-alertPopupClose?.addEventListener("click", closeAlertPopup);
-alertPopup?.addEventListener("click", (event) => {
-  if (event.target === alertPopup) {
-    closeAlertPopup();
-  }
-});
-window.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
-    closeAlertPopup();
+document.querySelectorAll(".toast").forEach((toast) => {
+  toast.querySelector("[data-toast-close]")?.addEventListener("click", () => dismissToast(toast));
+  if (!toast.hasAttribute("data-persistent")) {
+    setTimeout(() => dismissToast(toast), 6000);
   }
 });
