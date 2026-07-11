@@ -159,6 +159,19 @@ def init_db(database, owner_email=None, owner_password=None):
             )
             """
         )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_email TEXT NOT NULL,
+                action TEXT NOT NULL,
+                entity TEXT NOT NULL,
+                entity_id TEXT,
+                details TEXT,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
         migrate_db(db)
         seed_kayaks(db)
         bootstrap_owner(db, owner_email, owner_password)
@@ -599,6 +612,7 @@ def book():
                     datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 ),
             )
+            record_audit(db, "created", "booking", cursor.lastrowid, f"{booking['booking_reference']} via website")
             db.commit()
             booking_id = cursor.lastrowid
             break
@@ -682,6 +696,22 @@ def booking_ics(reference):
 
 
 # --- Admin routes -------------------------------------------------------
+
+
+def record_audit(db, action, entity, entity_id=None, details=None):
+    """Append-only trail of who changed what. Committed with the caller's commit."""
+    user = getattr(g, "user", None)
+    db.execute(
+        "INSERT INTO audit_log (user_email, action, entity, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (
+            user["email"] if user else "customer",
+            action,
+            entity,
+            str(entity_id) if entity_id is not None else None,
+            details,
+            datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        ),
+    )
 
 
 def csrf_token():
@@ -797,6 +827,22 @@ def admin_update_booking(booking_id):
         return redirect(url_for("admin"))
 
     total_price = count_days(start_date, end_date) * kayak["price_per_day"]
+    new_values = {
+        "kayak_id": kayak_id,
+        "customer_name": form.get("customer_name", "").strip(),
+        "customer_email": form.get("customer_email", "").strip(),
+        "customer_phone": form.get("customer_phone", "").strip(),
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "notes": form.get("notes", "").strip(),
+        "total_price": total_price,
+        "status": status,
+    }
+    changes = "; ".join(
+        f"{field}: {booking[field]!r} -> {value!r}"
+        for field, value in new_values.items()
+        if booking[field] != value
+    )
     db.execute(
         """
         UPDATE bookings
@@ -804,19 +850,10 @@ def admin_update_booking(booking_id):
             start_date = ?, end_date = ?, notes = ?, total_price = ?, status = ?
         WHERE id = ?
         """,
-        (
-            kayak_id,
-            form.get("customer_name", "").strip(),
-            form.get("customer_email", "").strip(),
-            form.get("customer_phone", "").strip(),
-            start_date.isoformat(),
-            end_date.isoformat(),
-            form.get("notes", "").strip(),
-            total_price,
-            status,
-            booking_id,
-        ),
+        (*new_values.values(), booking_id),
     )
+    if changes:
+        record_audit(db, "updated", "booking", booking_id, changes)
     db.commit()
     flash("Booking updated.", "success")
     return redirect(url_for("admin"))
@@ -835,6 +872,7 @@ def admin_cancel_booking(booking_id):
         "UPDATE bookings SET status = ?, cancelled_reason = ? WHERE id = ?",
         (status, reason, booking_id),
     )
+    record_audit(db, status, "booking", booking_id, f"{booking['booking_reference']}: {reason}")
     db.commit()
     flash(f"Booking {booking['booking_reference']} marked {status.replace('_', '-')}. The dates are available again.", "success")
     return redirect(url_for("admin"))
@@ -861,6 +899,7 @@ def admin_resend_email(booking_id):
     try:
         send_booking_emails(cfg, booking, {"name": booking["kayak_name"]})
         db.execute("UPDATE bookings SET email_status = 'sent', email_error = NULL WHERE id = ?", (booking_id,))
+        record_audit(db, "resent-email", "booking", booking_id, booking["booking_reference"])
         db.commit()
         flash(f"Emails for {booking['booking_reference']} sent.", "success")
     except Exception as error:
@@ -871,6 +910,15 @@ def admin_resend_email(booking_id):
         db.commit()
         flash(f"Email failed again: {error}", "error")
     return redirect(url_for("admin"))
+
+
+@admin_required
+def admin_audit():
+    db = get_db()
+    entries = db.execute(
+        "SELECT * FROM audit_log ORDER BY id DESC LIMIT 200"
+    ).fetchall()
+    return render_template("audit.html", entries=entries)
 
 
 @admin_required
@@ -935,6 +983,7 @@ def create_app(config_overrides=None):
     app.add_url_rule(
         "/admin/bookings/<int:booking_id>/resend-email", "admin_resend_email", admin_resend_email, methods=["POST"]
     )
+    app.add_url_rule("/admin/audit", "admin_audit", admin_audit)
     app.add_url_rule("/admin/test-email", "admin_test_email", admin_test_email, methods=["POST"])
 
     init_db(app.config["DATABASE"], app.config["OWNER_EMAIL"], app.config["OWNER_PASSWORD"])

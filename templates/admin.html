@@ -12,6 +12,7 @@
         <h1>Bookings</h1>
       </div>
       <div class="admin-actions-inline">
+        <a class="button secondary" href="{{ url_for('admin_audit') }}">Activity log</a>
         <a class="button primary" href="{{ url_for('index') }}">View website</a>
         <form method="post" action="{{ url_for('admin_logout') }}">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">

@@ -272,6 +272,19 @@ def test_admin_mutations_require_login(app, client):
     assert db_rows(app, "SELECT COUNT(*) FROM bookings")[0][0] == 1
 
 
+def test_audit_log_records_actions(app, client, admin_client):
+    client.post("/book", data=booking_form())
+    booking_id = db_rows(app, "SELECT id FROM bookings")[0][0]
+    admin_client.post(f"/admin/bookings/{booking_id}/cancel", data={"reason": "test"})
+    entries = db_rows(app, "SELECT user_email, action FROM audit_log ORDER BY id")
+    actions = [(e["user_email"], e["action"]) for e in entries]
+    assert ("customer", "created") in actions
+    assert (OWNER_EMAIL, "cancelled") in actions
+    page = admin_client.get("/admin/audit")
+    assert page.status_code == 200
+    assert b"cancelled" in page.data
+
+
 # --- CSRF ------------------------------------------------------------------
 
 

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Activity log — Admin{% endblock %}
+
+{% block body_class %}plain-page{% endblock %}
+
+{% block body %}
+  <main class="admin-page">
+    <header class="admin-header">
+      <div>
+        <p class="eyebrow">Owner dashboard</p>
+        <h1>Activity log</h1>
+      </div>
+      <a class="button primary" href="{{ url_for('admin') }}">Back to bookings</a>
+    </header>
+
+    {% include "_flash.html" %}
+
+    <section class="booking-table-wrap">
+      <table class="booking-table">
+        <thead>
+          <tr>
+            <th>When (UTC)</th>
+            <th>Who</th>
+            <th>Action</th>
+            <th>Entity</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in entries %}
+            <tr>
+              <td>{{ entry.created_at.replace('T', ' ') }}</td>
+              <td>{{ entry.user_email }}</td>
+              <td><span class="audit-action">{{ entry.action }}</span></td>
+              <td>{{ entry.entity }} #{{ entry.entity_id }}</td>
+              <td class="audit-details">{{ entry.details or '' }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5">Nothing logged yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
+{% endblock %}
+
+{% block scripts %}
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}
