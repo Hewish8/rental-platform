@@ -139,7 +139,7 @@ def test_double_booking_rejected(app, client):
     assert "/booking/" in first.headers["Location"]
     second = client.post("/book", data=booking_form(customer_name="Other Person"))
     assert second.status_code == 400
-    assert b"already booked on this date" in second.data
+    assert b"already booked on one of those dates" in second.data
     # Rejected form keeps what the visitor typed
     assert b"Other Person" in second.data
     assert db_rows(app, "SELECT COUNT(*) FROM bookings")[0][0] == 1
@@ -154,7 +154,7 @@ def test_past_date_rejected(client):
 def test_invalid_date_rejected(client):
     response = client.post("/book", data=booking_form(booking_date="not-a-date"))
     assert response.status_code == 400
-    assert b"valid booking date" in response.data
+    assert b"valid dates from the calendar" in response.data
 
 
 def test_missing_contact_rejected(app, client):
@@ -539,6 +539,68 @@ def test_reports_page(app, client, admin_client):
     assert b"Rs 1200" in page.data
     assert b"Lagoon Explorer" in page.data
     assert admin_client.get("/admin/reports?month=garbage").status_code == 200
+
+
+# --- Multi-day bookings ------------------------------------------------------
+
+
+def range_form(days=3, offset=10, **overrides):
+    start = date.today() + timedelta(days=offset)
+    end = start + timedelta(days=days - 1)
+    form = booking_form()
+    del form["booking_date"]
+    form["start_date"] = start.isoformat()
+    form["end_date"] = end.isoformat()
+    form.update(overrides)
+    return form
+
+
+def test_multiday_booking_prices_and_blocks(app, client):
+    response = client.post("/book", data=range_form(days=3))
+    assert response.status_code == 302
+    row = db_rows(app, "SELECT start_date, end_date, total_price FROM bookings")[0]
+    assert row["total_price"] == 3600  # 1200 x 3 days
+    # Every day of the range is now unavailable
+    days = client.get(f"/api/availability?kayak_id=1&start={row['start_date']}&days=3").get_json()
+    assert all(not day["available"] for day in days)
+
+
+def test_overlapping_range_rejected(app, client):
+    client.post("/book", data=range_form(days=3, offset=10))
+    # Overlaps the middle day
+    response = client.post("/book", data=range_form(days=3, offset=12, customer_name="Overlap"))
+    assert response.status_code == 400
+    assert b"already booked on one of those dates" in response.data
+    assert db_rows(app, "SELECT COUNT(*) FROM bookings")[0][0] == 1
+
+
+def test_range_cap_and_swap(app, client):
+    response = client.post("/book", data=range_form(days=20))
+    assert response.status_code == 400
+    assert b"limited to 14 days" in response.data
+
+    # Reversed dates are swapped, not rejected
+    start = (date.today() + timedelta(days=12)).isoformat()
+    end = (date.today() + timedelta(days=10)).isoformat()
+    form = booking_form()
+    del form["booking_date"]
+    form["start_date"], form["end_date"] = start, end
+    response = client.post("/book", data=form)
+    assert response.status_code == 302
+    row = db_rows(app, "SELECT start_date, end_date, total_price FROM bookings")[0]
+    assert row["start_date"] == end and row["end_date"] == start
+    assert row["total_price"] == 3600
+
+
+def test_admin_walkup_range(app, admin_client):
+    start = (date.today() + timedelta(days=20)).isoformat()
+    end = (date.today() + timedelta(days=21)).isoformat()
+    admin_client.post("/admin/bookings/new", data={
+        "kayak_id": "1", "booking_date": start, "end_date": end, "customer_name": "Range Walkup",
+    })
+    row = db_rows(app, "SELECT start_date, end_date, total_price FROM bookings WHERE customer_name = 'Range Walkup'")[0]
+    assert row["end_date"] == end
+    assert row["total_price"] == 2400
 
 
 # --- Promo codes -----------------------------------------------------------

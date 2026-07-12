@@ -18,9 +18,12 @@
         </select>
         {% if form_errors.get('kayak_id') %}<span class="field-error">{{ form_errors['kayak_id'] }}</span>{% endif %}
       </label>
-      <label>Date
+      <label>First day
         <input required name="booking_date" type="date" value="{{ form_values.get('booking_date') or today }}" min="{{ today }}">
         {% if form_errors.get('booking_date') %}<span class="field-error">{{ form_errors['booking_date'] }}</span>{% endif %}
+      </label>
+      <label>Last day (optional)
+        <input name="end_date" type="date" value="{{ form_values.get('end_date', '') }}" min="{{ today }}">
       </label>
       <label>Name
         <input required name="customer_name" value="{{ form_values.get('customer_name', '') }}" placeholder="Walk-up customer">

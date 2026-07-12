@@ -35,6 +35,7 @@ DATABASE = BASE_DIR / "kayak_rental.db"
 # The business runs on Mauritius time regardless of where the server sits.
 MAURITIUS_TZ = timezone(timedelta(hours=4))
 CLOSING_HOUR = 17
+BOOKING_MAX_DAYS = 14
 
 
 def local_now():
@@ -609,11 +610,20 @@ def availability():
     return jsonify(availability_days)
 
 
+def parse_range_fields(form):
+    """Accepts start_date/end_date, falling back to booking_date for both."""
+    start_raw = form.get("start_date", "").strip() or form.get("booking_date", "").strip()
+    end_raw = form.get("end_date", "").strip() or start_raw
+    return start_raw, end_raw
+
+
 def validate_booking_form(db, form):
-    """Returns (values, errors, kayak, booking_date)."""
+    """Returns (values, errors, kayak, start_date, end_date)."""
+    start_raw, end_raw = parse_range_fields(form)
     values = {
         "kayak_id": form.get("kayak_id", "").strip(),
-        "booking_date": form.get("booking_date", "").strip(),
+        "start_date": start_raw,
+        "end_date": end_raw,
         "customer_name": form.get("customer_name", "").strip(),
         "customer_email": form.get("customer_email", "").strip(),
         "customer_phone": form.get("customer_phone", "").strip(),
@@ -631,16 +641,22 @@ def validate_booking_form(db, form):
         if kayak is None:
             errors["kayak_id"] = "That kayak is no longer available. Please pick another."
 
-    booking_date = None
+    start_date = end_date = None
     try:
-        booking_date = parse_booking_date(values["booking_date"])
+        start_date = parse_booking_date(start_raw)
+        end_date = parse_booking_date(end_raw)
     except ValueError:
-        errors["booking_date"] = "Please pick a valid booking date."
+        errors["booking_date"] = "Please pick valid dates from the calendar."
     else:
-        if booking_date < local_today():
+        if end_date < start_date:
+            start_date, end_date = end_date, start_date
+            values["start_date"], values["end_date"] = start_date.isoformat(), end_date.isoformat()
+        if start_date < local_today():
             errors["booking_date"] = "That date has already passed. Please pick an upcoming date."
-        elif kayak is not None and not date_range_is_available(db, kayak["id"], booking_date, booking_date):
-            errors["booking_date"] = "That kayak is already booked on this date. Please pick another date."
+        elif count_days(start_date, end_date) > BOOKING_MAX_DAYS:
+            errors["booking_date"] = f"Bookings are limited to {BOOKING_MAX_DAYS} days. For longer rentals, message us on WhatsApp."
+        elif kayak is not None and not date_range_is_available(db, kayak["id"], start_date, end_date):
+            errors["booking_date"] = "That kayak is already booked on one of those dates. Please pick different dates."
 
     if not values["customer_name"]:
         errors["customer_name"] = "Please enter your full name."
@@ -651,7 +667,7 @@ def validate_booking_form(db, form):
 
     values["promo_code"] = form.get("promo_code", "").strip().upper()
 
-    return values, errors, kayak, booking_date
+    return values, errors, kayak, start_date, end_date
 
 
 def find_valid_promo(db, code):
@@ -756,23 +772,21 @@ def promo_check():
 
 def book():
     db = get_db()
-    values, errors, kayak, booking_date = validate_booking_form(db, request.form)
+    values, errors, kayak, start_date, end_date = validate_booking_form(db, request.form)
     promo, promo_error = find_valid_promo(db, values.get("promo_code"))
     if promo_error:
         errors["promo_code"] = promo_error
     if errors:
         suggestions = None
-        if "already booked" in errors.get("booking_date", ""):
-            suggestions = conflict_suggestions(db, kayak, booking_date)
+        if "already booked" in errors.get("booking_date", "") and start_date == end_date:
+            suggestions = conflict_suggestions(db, kayak, start_date)
         return render_index(values, errors, 400, suggestions)
-
-    start_date = booking_date
-    end_date = booking_date
 
     booking_id, booking = create_booking(db, kayak, start_date, end_date, values, source="online", promo=promo)
     if booking_id is None:
-        errors["booking_date"] = "That kayak was just booked on this date. Please pick another date."
-        return render_index(values, errors, 409, conflict_suggestions(db, kayak, booking_date))
+        errors["booking_date"] = "Those dates were just booked. Please pick different dates."
+        suggestions = conflict_suggestions(db, kayak, start_date) if start_date == end_date else None
+        return render_index(values, errors, 409, suggestions)
 
     queue_booking_emails(booking_id, booking, kayak)
     if smtp_is_configured(current_app.config):
@@ -1174,7 +1188,7 @@ def admin_new_booking():
     if request.method == "POST":
         form = request.form
         form_values = {key: form.get(key, "").strip() for key in
-                       ("kayak_id", "booking_date", "customer_name", "customer_email",
+                       ("kayak_id", "booking_date", "end_date", "customer_name", "customer_email",
                         "customer_phone", "notes", "party_size", "amount", "method")}
         kayak = None
         try:
@@ -1186,16 +1200,23 @@ def admin_new_booking():
         if kayak is None:
             form_errors["kayak_id"] = "Pick a kayak."
 
-        booking_date = None
+        booking_date = end_date_value = None
         try:
             booking_date = parse_booking_date(form_values["booking_date"])
+            end_date_value = (
+                parse_booking_date(form_values["end_date"]) if form_values.get("end_date") else booking_date
+            )
         except ValueError:
             form_errors["booking_date"] = "Pick a valid date."
         else:
+            if end_date_value < booking_date:
+                booking_date, end_date_value = end_date_value, booking_date
             if booking_date < local_today():
                 form_errors["booking_date"] = "That date is in the past."
-            elif kayak and not date_range_is_available(db, kayak["id"], booking_date, booking_date):
-                form_errors["booking_date"] = "That kayak is already booked on this date."
+            elif count_days(booking_date, end_date_value) > BOOKING_MAX_DAYS:
+                form_errors["booking_date"] = f"Bookings are limited to {BOOKING_MAX_DAYS} days."
+            elif kayak and not date_range_is_available(db, kayak["id"], booking_date, end_date_value):
+                form_errors["booking_date"] = "That kayak is already booked on one of those dates."
 
         if not form_values["customer_name"]:
             form_errors["customer_name"] = "Name is required."
@@ -1217,7 +1238,7 @@ def admin_new_booking():
 
         if not form_errors:
             booking_id, booking = create_booking(
-                db, kayak, booking_date, booking_date, form_values, source="walkup", party_size=party_size
+                db, kayak, booking_date, end_date_value, form_values, source="walkup", party_size=party_size
             )
             if booking_id is None:
                 form_errors["booking_date"] = "That kayak was just booked on this date."
@@ -1322,13 +1343,14 @@ def admin_update_booking(booking_id):
     form = request.form
     try:
         kayak_id = int(form["kayak_id"])
-        booking_date = parse_booking_date(form["booking_date"])
+        start_date = parse_booking_date(form["booking_date"])
+        end_date = parse_booking_date(form.get("end_date") or form["booking_date"])
     except (KeyError, ValueError):
         flash("Booking could not be updated. Check the kayak and booking date.", "error")
         return redirect(url_for("admin"))
 
-    start_date = booking_date
-    end_date = booking_date
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
 
     kayak = db.execute("SELECT * FROM kayaks WHERE id = ? AND status != 'retired'", (kayak_id,)).fetchone()
     booking = db.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()

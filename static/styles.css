@@ -2457,3 +2457,19 @@ dd,
 .promo-status.is-invalid {
   color: var(--color-danger);
 }
+
+
+/* --- Range selection ---------------------------------------------------- */
+
+.day.in-range {
+  background: rgba(18, 160, 168, 0.18);
+  border: 1px solid rgba(18, 160, 168, 0.3);
+  border-radius: 0;
+}
+
+.selection-hint {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-style: normal;
+}

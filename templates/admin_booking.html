@@ -21,7 +21,7 @@
       <dl class="booking-details">
         <div><dt>Customer</dt><dd>{{ booking.customer_name }}</dd></div>
         <div><dt>Kayak</dt><dd>{{ booking.kayak_name }}</dd></div>
-        <div><dt>Date</dt><dd>{{ booking.start_date }}</dd></div>
+        <div><dt>Dates</dt><dd>{{ booking.start_date }}{% if booking.end_date != booking.start_date %} to {{ booking.end_date }}{% endif %}</dd></div>
         <div><dt>Total</dt><dd>Rs {{ booking.total_price }}</dd></div>
         <div><dt>Email</dt><dd>{{ booking.customer_email }}</dd></div>
         <div><dt>Phone</dt><dd>
@@ -49,7 +49,8 @@
               {% endfor %}
             </select>
           </label>
-          <label>Date <input required name="booking_date" type="date" value="{{ booking.start_date }}"></label>
+          <label>First day <input required name="booking_date" type="date" value="{{ booking.start_date }}"></label>
+          <label>Last day <input name="end_date" type="date" value="{{ booking.end_date }}"></label>
           <label>Status
             <select name="status">
               {% for status in ['confirmed', 'on_water', 'returned', 'cancelled', 'no_show'] %}

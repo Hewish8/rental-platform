@@ -124,7 +124,7 @@
       <div class="section-copy">
         <p class="eyebrow">Live availability</p>
         <h2>Pick your date.</h2>
-        <p>Tap an open day for <strong id="calendarKayakName">your kayak</strong> — your selection appears in the booking form below.</p>
+        <p>Tap a day for <strong id="calendarKayakName">your kayak</strong> — tap a second day to book several days in a row (up to 14).</p>
       </div>
       <div class="calendar" role="group" aria-label="Availability calendar">
         <div class="availability-toolbar">
@@ -189,9 +189,11 @@
                  value="{{ form_values.get('customer_phone', '') }}">
         </label>
         <label>
-          Booking date
-          <input required readonly id="bookingDate" name="booking_date" type="text" placeholder="Pick a date from the calendar above" min="{{ today }}"
-                 value="{{ form_values.get('booking_date', '') }}"
+          Dates
+          <input type="hidden" name="start_date" id="startDate" value="{{ form_values.get('start_date', '') }}">
+          <input type="hidden" name="end_date" id="endDate" value="{{ form_values.get('end_date', '') }}">
+          <input required readonly id="bookingDate" type="text" placeholder="Pick your dates from the calendar above"
+                 value="{{ form_values.get('start_date', '') }}{% if form_values.get('end_date') and form_values.get('end_date') != form_values.get('start_date') %} to {{ form_values.get('end_date') }}{% endif %}"
                  {% if form_errors.get('booking_date') %}aria-invalid="true" aria-describedby="error-booking-date"{% endif %}>
           {% if form_errors.get('booking_date') %}<span class="field-error" id="error-booking-date">{{ form_errors['booking_date'] }}</span>{% endif %}
           {% if date_suggestions %}

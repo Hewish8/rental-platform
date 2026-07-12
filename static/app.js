@@ -22,8 +22,52 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 
+const startDateInput = document.querySelector("#startDate");
+const endDateInput = document.querySelector("#endDate");
+
 let selectedKayakId = kayakInput?.value || "1";
-let selectedDate = bookingDateInput?.value || null;
+let selectedStart = startDateInput?.value || null;
+let selectedEnd = endDateInput?.value || selectedStart;
+let monthAvailability = {};
+
+const MAX_RANGE_DAYS = 14;
+
+function rangeDays(startIso, endIso) {
+  const [y1, m1, d1] = startIso.split("-").map(Number);
+  const [y2, m2, d2] = endIso.split("-").map(Number);
+  return Math.round((new Date(y2, m2 - 1, d2) - new Date(y1, m1 - 1, d1)) / 86400000) + 1;
+}
+
+function rangeIsFree(startIso, endIso) {
+  // Best effort with the loaded month; the server re-validates everything.
+  return Object.entries(monthAvailability).every(([iso, available]) => {
+    if (iso <= startIso || iso >= endIso) {
+      return true;
+    }
+    return available;
+  });
+}
+
+function syncDateInputs() {
+  if (startDateInput) {
+    startDateInput.value = selectedStart || "";
+  }
+  if (endDateInput) {
+    endDateInput.value = selectedEnd || selectedStart || "";
+  }
+  if (bookingDateInput) {
+    if (!selectedStart) {
+      bookingDateInput.value = "";
+    } else if (!selectedEnd || selectedEnd === selectedStart) {
+      bookingDateInput.value = selectedStart;
+    } else {
+      bookingDateInput.value = `${selectedStart} to ${selectedEnd}`;
+    }
+    if (selectedStart) {
+      showFieldError(bookingDateInput, "");
+    }
+  }
+}
 
 const today = new Date();
 today.setHours(0, 0, 0, 0);
@@ -53,14 +97,20 @@ function updateSelectionLine() {
   if (!calendarSelection) {
     return;
   }
-  if (!selectedDate) {
-    calendarSelection.textContent = "No date selected yet.";
+  if (!selectedStart) {
+    calendarSelection.textContent = "No date selected yet — tap a day above.";
     return;
   }
   const card = currentKayakCard();
   const name = card ? card.dataset.kayakName : "Kayak";
-  const price = card ? ` · Rs ${card.dataset.kayakPrice}` : "";
-  calendarSelection.innerHTML = `<strong>${prettyDate(selectedDate)}</strong> · ${name}<strong>${price}</strong>`;
+  const days = selectedEnd ? rangeDays(selectedStart, selectedEnd) : 1;
+  const rate = card ? Number(card.dataset.kayakPrice) : 0;
+  const total = discountedTotal(rate * days);
+  if (!selectedEnd || selectedEnd === selectedStart) {
+    calendarSelection.innerHTML = `<strong>${prettyDate(selectedStart)}</strong> · ${name} · <strong>Rs ${total}</strong> <em class="selection-hint">Tap another day for a multi-day rental</em>`;
+  } else {
+    calendarSelection.innerHTML = `<strong>${prettyDate(selectedStart)} – ${prettyDate(selectedEnd)}</strong> · ${days} days · ${name} · <strong>Rs ${total}</strong>`;
+  }
 }
 
 let activePromo = null;
@@ -78,20 +128,23 @@ function discountedTotal(rate) {
 function updateBookingSummary() {
   const card = currentKayakCard();
   const rate = card ? Number(card.dataset.kayakPrice) : 0;
-  const total = discountedTotal(rate);
+  const days = selectedStart && selectedEnd ? rangeDays(selectedStart, selectedEnd) : 1;
+  const total = discountedTotal(rate * days);
   if (bookingBarPrice) {
     bookingBarPrice.textContent = `Rs ${total}`;
   }
-  if (selectedDate) {
+  if (selectedStart) {
     if (priceSummary) {
       priceSummary.hidden = false;
       summaryLine.textContent = activePromo
-        ? `Rs ${rate} × 1 day − ${activePromo.code}`
-        : `Rs ${rate} × 1 day`;
+        ? `Rs ${rate} × ${days} day${days > 1 ? "s" : ""} − ${activePromo.code}`
+        : `Rs ${rate} × ${days} day${days > 1 ? "s" : ""}`;
       summaryTotal.textContent = `Rs ${total}`;
     }
     if (bookingBarMeta) {
-      bookingBarMeta.textContent = prettyDate(selectedDate);
+      bookingBarMeta.textContent = selectedEnd && selectedEnd !== selectedStart
+        ? `${prettyDate(selectedStart)} – ${prettyDate(selectedEnd)}`
+        : prettyDate(selectedStart);
     }
   } else {
     if (priceSummary) {
@@ -161,6 +214,7 @@ async function loadAvailability() {
   }
 
   calendarGrid.innerHTML = "";
+  monthAvailability = {};
 
   // Monday-first leading blanks so days align with the weekday header.
   const leading = (firstOfMonth.getDay() + 6) % 7;
@@ -193,8 +247,15 @@ async function loadAvailability() {
     } else {
       tile.classList.add("available");
     }
-    if (day.date === selectedDate) {
+    monthAvailability[day.date] = day.available && !isPast;
+    if (selectedStart && day.date === selectedStart) {
       tile.classList.add("selected");
+    }
+    if (selectedEnd && day.date === selectedEnd) {
+      tile.classList.add("selected");
+    }
+    if (selectedStart && selectedEnd && day.date > selectedStart && day.date < selectedEnd) {
+      tile.classList.add("in-range");
     }
     const prettyFull = dateObj.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
     tile.setAttribute(
@@ -203,16 +264,42 @@ async function loadAvailability() {
     );
     if (bookable) {
       tile.addEventListener("click", () => {
-        selectedDate = day.date;
-        if (bookingDateInput) {
-          bookingDateInput.value = day.date;
-          showFieldError(bookingDateInput, "");
+        if (!selectedStart || (selectedStart && selectedEnd && selectedEnd !== selectedStart) || day.date < selectedStart) {
+          // Start a fresh selection
+          selectedStart = day.date;
+          selectedEnd = day.date;
+        } else if (day.date === selectedStart) {
+          selectedEnd = day.date;
+        } else {
+          // Extend to a range if every day between is free and within the cap
+          if (rangeDays(selectedStart, day.date) > MAX_RANGE_DAYS) {
+            selectedStart = day.date;
+            selectedEnd = day.date;
+          } else if (rangeIsFree(selectedStart, day.date)) {
+            selectedEnd = day.date;
+          } else {
+            selectedStart = day.date;
+            selectedEnd = day.date;
+          }
         }
-        calendarGrid.querySelectorAll(".day.selected").forEach((other) => other.classList.remove("selected"));
-        tile.classList.add("selected");
+        syncDateInputs();
+        // Re-render highlights without refetching
+        calendarGrid.querySelectorAll(".day").forEach((other) => other.classList.remove("selected", "in-range"));
+        calendarGrid.querySelectorAll(".day").forEach((other) => {
+          const label = other.getAttribute("data-date");
+          if (!label) {
+            return;
+          }
+          if (label === selectedStart || label === selectedEnd) {
+            other.classList.add("selected");
+          } else if (selectedStart && selectedEnd && label > selectedStart && label < selectedEnd) {
+            other.classList.add("in-range");
+          }
+        });
         updateSelectionLine();
       });
     }
+    tile.setAttribute("data-date", day.date);
     calendarGrid.appendChild(tile);
   });
 
@@ -229,10 +316,9 @@ function selectKayak(card, options = {}) {
     calendarKayakName.textContent = card.dataset.kayakName;
   }
   if (changed && !options.keepDate) {
-    selectedDate = null;
-    if (bookingDateInput) {
-      bookingDateInput.value = "";
-    }
+    selectedStart = null;
+    selectedEnd = null;
+    syncDateInputs();
   }
   updateBookingSummary();
 
@@ -283,7 +369,7 @@ bookingDateInput?.addEventListener("click", () => {
 const fieldValidators = {
   customer_name: (value) => (value.trim() ? "" : "Please enter your full name."),
   customer_email: (value) => (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()) ? "" : "Please enter a valid email address."),
-  booking_date: (value) => (value ? "" : "Please pick a date from the calendar above."),
+  booking_date: () => (startDateInput?.value ? "" : "Please pick your dates from the calendar above."),
 };
 
 function showFieldError(input, message) {
@@ -373,9 +459,14 @@ function setStep(step) {
 function fillReview() {
   const form = document.querySelector(".booking-form");
   const card = currentKayakCard();
-  const rate = card ? discountedTotal(Number(card.dataset.kayakPrice)) : 0;
+  const days = selectedStart && selectedEnd ? rangeDays(selectedStart, selectedEnd) : 1;
+  const rate = card ? discountedTotal(Number(card.dataset.kayakPrice) * days) : 0;
   document.querySelector("#reviewKayak").textContent = card ? card.dataset.kayakName : "";
-  document.querySelector("#reviewDate").textContent = selectedDate ? prettyDate(selectedDate) : "";
+  document.querySelector("#reviewDate").textContent = !selectedStart
+    ? ""
+    : selectedEnd && selectedEnd !== selectedStart
+      ? `${prettyDate(selectedStart)} – ${prettyDate(selectedEnd)} (${days} days)`
+      : prettyDate(selectedStart);
   document.querySelector("#reviewName").textContent = form.customer_name.value.trim();
   document.querySelector("#reviewEmail").textContent = form.customer_email.value.trim();
   document.querySelector("#reviewPhone").textContent = form.customer_phone.value.trim() || "Not provided";
@@ -439,11 +530,9 @@ document.querySelectorAll("[data-copy]").forEach((button) => {
 // Conflict recovery: tapping a suggested date fills it in and clears the error.
 document.querySelectorAll(".date-chip").forEach((chip) => {
   chip.addEventListener("click", () => {
-    selectedDate = chip.dataset.date;
-    if (bookingDateInput) {
-      bookingDateInput.value = selectedDate;
-      showFieldError(bookingDateInput, "");
-    }
+    selectedStart = chip.dataset.date;
+    selectedEnd = chip.dataset.date;
+    syncDateInputs();
     document.querySelector(".date-suggestions")?.remove();
     updateBookingSummary();
     updateSelectionLine();
