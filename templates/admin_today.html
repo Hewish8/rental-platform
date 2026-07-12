@@ -1,0 +1,112 @@
+{% extends "admin_base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block title %}Today — Admin{% endblock %}
+{% block admin_title %}{{ today_label }}{% endblock %}
+
+{% block admin_body %}
+  <section class="kpi-strip">
+    <article class="kpi"><span>Today's rentals</span><strong>{{ todays|length }}</strong></article>
+    <article class="kpi"><span>Expected revenue</span><strong>Rs {{ expected_revenue }}</strong></article>
+    <article class="kpi {% if unpaid_total > 0 %}kpi-warn{% endif %}"><span>Unpaid</span><strong>Rs {{ unpaid_total }}</strong></article>
+    <article class="kpi"><span>Fleet out</span><strong>{{ on_water_count }} / {{ fleet_size }}</strong></article>
+  </section>
+
+  {% for booking in late %}
+    <div class="late-card">
+      <div>
+        <strong>⚠️ {{ booking.customer_name }} — {{ booking.kayak_name }}</strong>
+        <span>Expected back {{ booking.expected_return[11:16] }}</span>
+      </div>
+      <div class="late-actions">
+        {% if booking.customer_phone %}
+          <a class="button secondary" href="tel:{{ booking.customer_phone.replace(' ', '') }}">{{ icon('phone', 15) }}Call</a>
+          <a class="button secondary" href="https://wa.me/{{ booking.customer_phone.replace(' ', '').replace('+', '') }}">{{ icon('whatsapp', 15) }}WhatsApp</a>
+        {% endif %}
+        <form method="post" action="{{ url_for('admin_checkin_booking', booking_id=booking.id) }}">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ url_for('admin_today') }}">
+          <button class="button primary" type="submit">{{ icon('check', 15) }}Check in</button>
+        </form>
+      </div>
+    </div>
+  {% endfor %}
+
+  <section class="departures">
+    <h2>Departures</h2>
+    {% for booking in todays %}
+      {% set paid = paid_map.get(booking.id, 0) %}
+      {% set due = (booking.total_price or 0) - paid %}
+      <article class="departure-card {% if booking.status == 'returned' %}is-done{% endif %} {% if booking.id in late_ids %}is-late{% endif %}">
+        <div class="departure-info">
+          <strong>{{ booking.customer_name }}</strong>
+          <span>{{ booking.kayak_name }} · {{ booking.booking_reference }}</span>
+          <div class="departure-chips">
+            <span class="status-chip status-{{ booking.status }}">{{ booking.status.replace('_', ' ') }}</span>
+            {% if due <= 0 %}
+              <span class="pay-chip paid">Paid</span>
+            {% else %}
+              <span class="pay-chip due">Due Rs {{ due }}</span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="departure-actions">
+          {% if booking.customer_phone %}
+            <a class="icon-button" href="tel:{{ booking.customer_phone.replace(' ', '') }}" aria-label="Call {{ booking.customer_name }}">{{ icon('phone', 16) }}</a>
+            <a class="icon-button" href="https://wa.me/{{ booking.customer_phone.replace(' ', '').replace('+', '') }}" aria-label="WhatsApp {{ booking.customer_name }}">{{ icon('whatsapp', 16) }}</a>
+          {% endif %}
+          <a class="icon-button" href="{{ url_for('admin_booking_detail', booking_id=booking.id) }}" aria-label="Open booking">{{ icon('chevron-right', 16) }}</a>
+          {% if booking.status == 'confirmed' %}
+            <form method="post" action="{{ url_for('admin_checkout_booking', booking_id=booking.id) }}">
+              <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+              <input type="hidden" name="next" value="{{ url_for('admin_today') }}">
+              <button class="button primary" type="submit">Check out →</button>
+            </form>
+          {% elif booking.status == 'on_water' %}
+            <form method="post" action="{{ url_for('admin_checkin_booking', booking_id=booking.id) }}">
+              <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+              <input type="hidden" name="next" value="{{ url_for('admin_today') }}">
+              <button class="button primary" type="submit">{{ icon('check', 15) }}Check in</button>
+            </form>
+          {% endif %}
+        </div>
+      </article>
+    {% else %}
+      <p class="admin-muted empty-day">No rentals today — enjoy the beach 🏖️</p>
+    {% endfor %}
+  </section>
+
+  <section class="departures">
+    <h2>Tomorrow <span class="admin-muted">({{ tomorrows|length }})</span></h2>
+    {% for booking in tomorrows %}
+      <article class="departure-card is-preview">
+        <div class="departure-info">
+          <strong>{{ booking.customer_name }}</strong>
+          <span>{{ booking.kayak_name }} · {{ booking.customer_phone or booking.customer_email }}</span>
+        </div>
+        <a class="icon-button" href="{{ url_for('admin_booking_detail', booking_id=booking.id) }}" aria-label="Open booking">{{ icon('chevron-right', 16) }}</a>
+      </article>
+    {% else %}
+      <p class="admin-muted">Nothing booked for tomorrow yet.</p>
+    {% endfor %}
+  </section>
+
+  {% if email_failures %}
+    <section class="departures">
+      <h2>Needs attention</h2>
+      {% for booking in email_failures %}
+        <article class="departure-card is-late">
+          <div class="departure-info">
+            <strong>Email failed — {{ booking.customer_name }} ({{ booking.start_date }})</strong>
+            <span>{{ booking.booking_reference }}</span>
+          </div>
+          <form method="post" action="{{ url_for('admin_resend_email', booking_id=booking.id) }}">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="{{ url_for('admin_today') }}">
+            <button class="button secondary" type="submit">Resend</button>
+          </form>
+        </article>
+      {% endfor %}
+    </section>
+  {% endif %}
+{% endblock %}

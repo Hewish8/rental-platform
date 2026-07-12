@@ -31,6 +31,18 @@ from werkzeug.security import check_password_hash, generate_password_hash
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE = BASE_DIR / "kayak_rental.db"
 
+# The business runs on Mauritius time regardless of where the server sits.
+MAURITIUS_TZ = timezone(timedelta(hours=4))
+CLOSING_HOUR = 17
+
+
+def local_now():
+    return datetime.now(MAURITIUS_TZ)
+
+
+def local_today():
+    return local_now().date()
+
 
 def load_env_file():
     env_path = BASE_DIR / ".env"
@@ -351,7 +363,7 @@ def nearest_available_dates(db, kayak_id, around, count=3, horizon=45):
     suggestions = []
     for offset in range(1, horizon + 1):
         for candidate in (around + timedelta(days=offset), around - timedelta(days=offset)):
-            if candidate < date.today():
+            if candidate < local_today():
                 continue
             if date_range_is_available(db, kayak_id, candidate, candidate):
                 suggestions.append(candidate)
@@ -473,7 +485,7 @@ def render_index(form_values=None, form_errors=None, status=200, date_suggestion
         render_template(
             "index.html",
             kayaks=kayaks,
-            today=date.today().isoformat(),
+            today=local_today().isoformat(),
             smtp_configured=smtp_is_configured(current_app.config),
             owner_email=current_app.config["OWNER_EMAIL"],
             form_values=form_values or {},
@@ -553,7 +565,7 @@ def validate_booking_form(db, form):
     except ValueError:
         errors["booking_date"] = "Please pick a valid booking date."
     else:
-        if booking_date < date.today():
+        if booking_date < local_today():
             errors["booking_date"] = "That date has already passed. Please pick an upcoming date."
         elif kayak is not None and not date_range_is_available(db, kayak["id"], booking_date, booking_date):
             errors["booking_date"] = "That kayak is already booked on this date. Please pick another date."
@@ -799,7 +811,7 @@ def admin_login():
             session.permanent = True
             next_path = request.args.get("next", "")
             if not next_path.startswith("/admin"):
-                next_path = url_for("admin")
+                next_path = url_for("admin_today")
             return redirect(next_path)
         flash("Wrong email or password.", "error")
     return render_template("login.html")
@@ -812,7 +824,7 @@ def admin_logout():
 
 
 def fetch_bookings(db, view, q):
-    today_iso = date.today().isoformat()
+    today_iso = local_today().isoformat()
     where = ["1=1"]
     params = []
     order = "bookings.start_date DESC, bookings.created_at DESC"
@@ -874,6 +886,110 @@ def admin():
         smtp_host=cfg["SMTP_HOST"],
         smtp_port=cfg["SMTP_PORT"],
     )
+
+
+@admin_required
+def admin_today():
+    db = get_db()
+    today_iso = local_today().isoformat()
+    tomorrow_iso = (local_today() + timedelta(days=1)).isoformat()
+    now_iso = local_now().isoformat(timespec="seconds")
+
+    todays = db.execute(
+        """
+        SELECT bookings.*, kayaks.name AS kayak_name
+        FROM bookings JOIN kayaks ON kayaks.id = bookings.kayak_id
+        WHERE bookings.start_date <= ? AND bookings.end_date >= ?
+          AND bookings.status IN ('confirmed', 'on_water', 'returned')
+        ORDER BY bookings.status = 'returned', bookings.created_at
+        """,
+        (today_iso, today_iso),
+    ).fetchall()
+    paid_map = payments_by_booking(db)
+
+    late = [
+        b for b in todays
+        if b["status"] == "on_water" and b["expected_return"] and b["expected_return"] < now_iso
+    ]
+    expected_revenue = sum(b["total_price"] or 0 for b in todays)
+    unpaid_total = sum(
+        max(0, (b["total_price"] or 0) - paid_map.get(b["id"], 0)) for b in todays
+    )
+    on_water_count = sum(1 for b in todays if b["status"] == "on_water")
+    fleet_size = db.execute("SELECT COUNT(*) FROM kayaks WHERE active = 1").fetchone()[0]
+
+    tomorrows = db.execute(
+        """
+        SELECT bookings.*, kayaks.name AS kayak_name
+        FROM bookings JOIN kayaks ON kayaks.id = bookings.kayak_id
+        WHERE bookings.start_date = ? AND bookings.status IN ('confirmed', 'on_water')
+        ORDER BY bookings.created_at
+        """,
+        (tomorrow_iso,),
+    ).fetchall()
+
+    email_failures = db.execute(
+        """
+        SELECT bookings.*, kayaks.name AS kayak_name
+        FROM bookings JOIN kayaks ON kayaks.id = bookings.kayak_id
+        WHERE bookings.email_status = 'failed' AND bookings.start_date >= ?
+        ORDER BY bookings.start_date LIMIT 10
+        """,
+        (today_iso,),
+    ).fetchall()
+
+    return render_template(
+        "admin_today.html",
+        todays=todays,
+        late=late,
+        late_ids={b["id"] for b in late},
+        tomorrows=tomorrows,
+        email_failures=email_failures,
+        paid_map=paid_map,
+        expected_revenue=expected_revenue,
+        unpaid_total=unpaid_total,
+        on_water_count=on_water_count,
+        fleet_size=fleet_size,
+        today_label=local_today().strftime("%A %d %B"),
+    )
+
+
+@admin_required
+def admin_checkout_booking(booking_id):
+    db = get_db()
+    booking = db.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    if booking is None or booking["status"] != "confirmed":
+        flash("Only a confirmed booking can be checked out.", "error")
+        return admin_redirect()
+    now = local_now()
+    expected = now.replace(hour=CLOSING_HOUR, minute=0, second=0, microsecond=0)
+    if expected <= now:
+        expected = now + timedelta(hours=2)
+    db.execute(
+        "UPDATE bookings SET status = 'on_water', checked_out_at = ?, expected_return = ? WHERE id = ?",
+        (now.isoformat(timespec="seconds"), expected.isoformat(timespec="seconds"), booking_id),
+    )
+    record_audit(db, "checked-out", "booking", booking_id, booking["booking_reference"])
+    db.commit()
+    flash(f"{booking['customer_name']} is on the water. Expected back by {expected.strftime('%H:%M')}.", "success")
+    return admin_redirect()
+
+
+@admin_required
+def admin_checkin_booking(booking_id):
+    db = get_db()
+    booking = db.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    if booking is None or booking["status"] != "on_water":
+        flash("Only an on-water booking can be checked in.", "error")
+        return admin_redirect()
+    db.execute(
+        "UPDATE bookings SET status = 'returned', checked_in_at = ? WHERE id = ?",
+        (local_now().isoformat(timespec="seconds"), booking_id),
+    )
+    record_audit(db, "checked-in", "booking", booking_id, booking["booking_reference"])
+    db.commit()
+    flash(f"{booking['customer_name']} is back. Kayak free again.", "success")
+    return admin_redirect()
 
 
 @admin_required
@@ -1158,6 +1274,13 @@ def create_app(config_overrides=None):
     app.add_url_rule("/admin/login", "admin_login", admin_login, methods=["GET", "POST"])
     app.add_url_rule("/admin/logout", "admin_logout", admin_logout, methods=["POST"])
     app.add_url_rule("/admin", "admin", admin)
+    app.add_url_rule("/admin/today", "admin_today", admin_today)
+    app.add_url_rule(
+        "/admin/bookings/<int:booking_id>/checkout", "admin_checkout_booking", admin_checkout_booking, methods=["POST"]
+    )
+    app.add_url_rule(
+        "/admin/bookings/<int:booking_id>/checkin", "admin_checkin_booking", admin_checkin_booking, methods=["POST"]
+    )
     app.add_url_rule("/admin/bookings/<int:booking_id>", "admin_booking_detail", admin_booking_detail)
     app.add_url_rule("/admin/bookings.csv", "admin_bookings_csv", admin_bookings_csv)
     app.add_url_rule(

@@ -19,6 +19,7 @@
     </header>
 
     <nav class="admin-tabs" aria-label="Admin sections">
+      <a href="{{ url_for('admin_today') }}" {% if request.endpoint == 'admin_today' %}class="is-active" aria-current="page"{% endif %}>Today</a>
       <a href="{{ url_for('admin') }}" {% if request.endpoint in ['admin', 'admin_booking_detail'] %}class="is-active" aria-current="page"{% endif %}>Bookings</a>
       <a href="{{ url_for('admin_audit') }}" {% if request.endpoint == 'admin_audit' %}class="is-active" aria-current="page"{% endif %}>Activity</a>
     </nav>

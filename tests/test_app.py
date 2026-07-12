@@ -353,6 +353,50 @@ def test_bookings_csv_export(app, client, admin_client):
     assert "Jane Visitor" in body
 
 
+def test_today_screen_and_lifecycle(app, client, admin_client):
+    today_iso = date.today().isoformat()
+    client.post("/book", data=booking_form(booking_date=today_iso))
+    booking_id = db_rows(app, "SELECT id FROM bookings")[0][0]
+
+    page = admin_client.get("/admin/today")
+    assert page.status_code == 200
+    assert b"Jane Visitor" in page.data
+    assert "Check out →".encode() in page.data
+
+    admin_client.post(f"/admin/bookings/{booking_id}/checkout")
+    row = db_rows(app, "SELECT status, checked_out_at, expected_return FROM bookings WHERE id = ?", (booking_id,))[0]
+    assert row["status"] == "on_water"
+    assert row["checked_out_at"] and row["expected_return"]
+
+    # A checkout on an already on-water booking is rejected
+    admin_client.post(f"/admin/bookings/{booking_id}/checkout")
+    assert db_rows(app, "SELECT COUNT(*) FROM audit_log WHERE action = 'checked-out'")[0][0] == 1
+
+    admin_client.post(f"/admin/bookings/{booking_id}/checkin")
+    row = db_rows(app, "SELECT status, checked_in_at FROM bookings WHERE id = ?", (booking_id,))[0]
+    assert row["status"] == "returned"
+    assert row["checked_in_at"]
+
+
+def test_late_return_flagged(app, client, admin_client):
+    today_iso = date.today().isoformat()
+    client.post("/book", data=booking_form(booking_date=today_iso))
+    booking_id = db_rows(app, "SELECT id FROM bookings")[0][0]
+    admin_client.post(f"/admin/bookings/{booking_id}/checkout")
+    # Force the expected return into the past
+    from app import connect_db as _connect
+    with _connect(app.config["DATABASE"]) as db:
+        db.execute("UPDATE bookings SET expected_return = '2020-01-01T10:00:00+04:00' WHERE id = ?", (booking_id,))
+        db.commit()
+    page = admin_client.get("/admin/today")
+    assert b"Expected back" in page.data
+
+
+def test_login_lands_on_today(client):
+    response = client.post("/admin/login", data={"email": OWNER_EMAIL, "password": OWNER_PASSWORD})
+    assert response.headers["Location"].endswith("/admin/today")
+
+
 # --- CSRF ------------------------------------------------------------------
 
 
