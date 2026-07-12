@@ -770,6 +770,33 @@ def test_settings_flow_to_public_site(app, client, admin_client):
     assert b"+230 5777 8888" in page.data
 
 
+def test_change_password(app, admin_client):
+    # Wrong current password rejected
+    admin_client.post("/admin/account", data={
+        "current_password": "wrong", "new_password": "new-password-123", "confirm_password": "new-password-123",
+    })
+    # Correct flow
+    admin_client.post("/admin/account", data={
+        "current_password": OWNER_PASSWORD, "new_password": "new-password-123", "confirm_password": "new-password-123",
+    })
+    fresh = app.test_client()
+    fresh.post("/admin/login", data={"email": OWNER_EMAIL, "password": "new-password-123"})
+    assert fresh.get("/admin/today").status_code == 200
+    stale = app.test_client()
+    stale.post("/admin/login", data={"email": OWNER_EMAIL, "password": OWNER_PASSWORD})
+    assert stale.get("/admin/today").status_code == 302
+
+
+def test_login_rate_limit(app, client):
+    import app as app_module
+    app_module._LOGIN_ATTEMPTS.clear()
+    for _ in range(5):
+        client.post("/admin/login", data={"email": OWNER_EMAIL, "password": "wrong"})
+    response = client.post("/admin/login", data={"email": OWNER_EMAIL, "password": OWNER_PASSWORD})
+    assert response.status_code == 429
+    app_module._LOGIN_ATTEMPTS.clear()
+
+
 # --- CSRF ------------------------------------------------------------------
 
 

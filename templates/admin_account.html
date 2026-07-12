@@ -1,0 +1,25 @@
+{% extends "admin_base.html" %}
+
+{% block title %}My account — Admin{% endblock %}
+{% block admin_title %}My account{% endblock %}
+
+{% block admin_body %}
+  <section class="admin-tool new-booking-card">
+    <p class="eyebrow">Signed in as</p>
+    <h2>{{ g.user.email }}</h2>
+    <p class="admin-muted">Role: {{ g.user.role }}</p>
+    <form method="post" class="edit-form">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <label class="full">Current password
+        <input required name="current_password" type="password" autocomplete="current-password">
+      </label>
+      <label>New password
+        <input required name="new_password" type="password" minlength="8" autocomplete="new-password">
+      </label>
+      <label>Repeat new password
+        <input required name="confirm_password" type="password" minlength="8" autocomplete="new-password">
+      </label>
+      <button class="button primary" type="submit">Change password</button>
+    </form>
+  </section>
+{% endblock %}

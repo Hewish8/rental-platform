@@ -10,6 +10,7 @@
         <h1>{% block admin_title %}Dashboard{% endblock %}</h1>
       </div>
       <div class="admin-actions-inline">
+        <a class="button secondary" href="{{ url_for('admin_account') }}" title="My account">{{ g.user.email.split('@')[0] if g.user else '' }}</a>
         <a class="button secondary" href="{{ url_for('index') }}">View website</a>
         <form method="post" action="{{ url_for('admin_logout') }}">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">

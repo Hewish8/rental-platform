@@ -1065,16 +1065,41 @@ def admin_required(view):
     return wrapped
 
 
+_LOGIN_ATTEMPTS = {}
+LOGIN_MAX_ATTEMPTS = 5
+LOGIN_WINDOW_SECONDS = 15 * 60
+
+
+def login_throttled(key):
+    import time
+
+    now = time.monotonic()
+    attempts = [t for t in _LOGIN_ATTEMPTS.get(key, []) if now - t < LOGIN_WINDOW_SECONDS]
+    _LOGIN_ATTEMPTS[key] = attempts
+    return len(attempts) >= LOGIN_MAX_ATTEMPTS
+
+
+def record_login_failure(key):
+    import time
+
+    _LOGIN_ATTEMPTS.setdefault(key, []).append(time.monotonic())
+
+
 def admin_login():
     if g.user is not None:
         return redirect(url_for("admin"))
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
+        throttle_key = f"{request.remote_addr}:{email}"
+        if login_throttled(throttle_key):
+            flash("Too many attempts. Please wait 15 minutes and try again.", "error")
+            return render_template("login.html"), 429
         user = get_db().execute(
             "SELECT * FROM users WHERE lower(email) = ? AND active = 1", (email,)
         ).fetchone()
         if user and check_password_hash(user["password_hash"], password):
+            _LOGIN_ATTEMPTS.pop(throttle_key, None)
             session.clear()
             session["user_id"] = user["id"]
             session.permanent = True
@@ -1082,8 +1107,34 @@ def admin_login():
             if not next_path.startswith("/admin"):
                 next_path = url_for("admin_today")
             return redirect(next_path)
+        record_login_failure(throttle_key)
         flash("Wrong email or password.", "error")
     return render_template("login.html")
+
+
+@admin_required
+def admin_account():
+    if request.method == "POST":
+        db = get_db()
+        current = request.form.get("current_password", "")
+        new = request.form.get("new_password", "")
+        confirm = request.form.get("confirm_password", "")
+        if not check_password_hash(g.user["password_hash"], current):
+            flash("Your current password is wrong.", "error")
+        elif len(new) < 8:
+            flash("The new password needs at least 8 characters.", "error")
+        elif new != confirm:
+            flash("The new passwords do not match.", "error")
+        else:
+            db.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?",
+                (generate_password_hash(new), g.user["id"]),
+            )
+            record_audit(db, "password-changed", "user", g.user["email"])
+            db.commit()
+            flash("Password changed.", "success")
+            return redirect(url_for("admin_today"))
+    return render_template("admin_account.html")
 
 
 def admin_logout():
@@ -2203,6 +2254,7 @@ def create_app(config_overrides=None):
     app.add_url_rule("/manage/cancel", "manage_cancel", manage_cancel, methods=["POST"])
     app.add_url_rule("/admin/login", "admin_login", admin_login, methods=["GET", "POST"])
     app.add_url_rule("/admin/logout", "admin_logout", admin_logout, methods=["POST"])
+    app.add_url_rule("/admin/account", "admin_account", admin_account, methods=["GET", "POST"])
     app.add_url_rule("/admin", "admin", admin)
     app.add_url_rule("/admin/today", "admin_today", admin_today)
     app.add_url_rule("/admin/bookings/new", "admin_new_booking", admin_new_booking, methods=["GET", "POST"])
