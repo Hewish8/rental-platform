@@ -580,6 +580,57 @@ def validate_booking_form(db, form):
     return values, errors, kayak, booking_date
 
 
+def create_booking(db, kayak, start_date, end_date, values, source, party_size=1):
+    """Atomically create a booking. Returns (booking_id, booking) — id is None
+    if the dates were taken between validation and insert."""
+    booking = {
+        "kayak_id": kayak["id"],
+        "booking_reference": generate_booking_reference(),
+        "customer_name": values["customer_name"],
+        "customer_email": values.get("customer_email", ""),
+        "customer_phone": values.get("customer_phone", ""),
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "notes": values.get("notes", ""),
+        "total_price": count_days(start_date, end_date) * kayak["price_per_day"],
+    }
+    for _attempt in range(2):
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            if not date_range_is_available(db, kayak["id"], start_date, end_date):
+                db.rollback()
+                return None, booking
+            cursor = db.execute(
+                """
+                INSERT INTO bookings
+                    (kayak_id, booking_reference, customer_name, customer_email, customer_phone,
+                     start_date, end_date, notes, total_price, source, party_size, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    booking["kayak_id"],
+                    booking["booking_reference"],
+                    booking["customer_name"],
+                    booking["customer_email"],
+                    booking["customer_phone"],
+                    booking["start_date"],
+                    booking["end_date"],
+                    booking["notes"],
+                    booking["total_price"],
+                    source,
+                    party_size,
+                    datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                ),
+            )
+            record_audit(db, "created", "booking", cursor.lastrowid, f"{booking['booking_reference']} via {source}")
+            db.commit()
+            return cursor.lastrowid, booking
+        except sqlite3.IntegrityError:
+            db.rollback()
+            booking["booking_reference"] = generate_booking_reference()
+    return None, booking
+
+
 def conflict_suggestions(db, kayak, booking_date):
     if kayak is None or booking_date is None:
         return None
@@ -597,59 +648,8 @@ def book():
 
     start_date = booking_date
     end_date = booking_date
-    kayak_id = kayak["id"]
 
-    booking = {
-        "kayak_id": kayak_id,
-        "booking_reference": generate_booking_reference(),
-        "customer_name": values["customer_name"],
-        "customer_email": values["customer_email"],
-        "customer_phone": values["customer_phone"],
-        "start_date": start_date.isoformat(),
-        "end_date": end_date.isoformat(),
-        "notes": values["notes"],
-        "total_price": count_days(start_date, end_date) * kayak["price_per_day"],
-    }
-
-    # Check availability and insert atomically: BEGIN IMMEDIATE takes the write
-    # lock up front so two simultaneous requests cannot both pass the check.
-    booking_id = None
-    for _attempt in range(2):
-        try:
-            db.execute("BEGIN IMMEDIATE")
-            if not date_range_is_available(db, kayak_id, start_date, end_date):
-                db.rollback()
-                errors["booking_date"] = "That kayak was just booked on this date. Please pick another date."
-                return render_index(values, errors, 409, conflict_suggestions(db, kayak, booking_date))
-            cursor = db.execute(
-                """
-                INSERT INTO bookings
-                    (kayak_id, booking_reference, customer_name, customer_email, customer_phone,
-                     start_date, end_date, notes, total_price, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    booking["kayak_id"],
-                    booking["booking_reference"],
-                    booking["customer_name"],
-                    booking["customer_email"],
-                    booking["customer_phone"],
-                    booking["start_date"],
-                    booking["end_date"],
-                    booking["notes"],
-                    booking["total_price"],
-                    datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                ),
-            )
-            record_audit(db, "created", "booking", cursor.lastrowid, f"{booking['booking_reference']} via website")
-            db.commit()
-            booking_id = cursor.lastrowid
-            break
-        except sqlite3.IntegrityError:
-            # Reference collision on the unique index: retry once with a new one.
-            db.rollback()
-            booking["booking_reference"] = generate_booking_reference()
-
+    booking_id, booking = create_booking(db, kayak, start_date, end_date, values, source="online")
     if booking_id is None:
         errors["booking_date"] = "That kayak was just booked on this date. Please pick another date."
         return render_index(values, errors, 409, conflict_suggestions(db, kayak, booking_date))
@@ -993,6 +993,92 @@ def admin_checkin_booking(booking_id):
 
 
 @admin_required
+def admin_new_booking():
+    db = get_db()
+    kayaks = db.execute("SELECT * FROM kayaks WHERE active = 1 ORDER BY id").fetchall()
+    form_values = {}
+    form_errors = {}
+
+    if request.method == "POST":
+        form = request.form
+        form_values = {key: form.get(key, "").strip() for key in
+                       ("kayak_id", "booking_date", "customer_name", "customer_email",
+                        "customer_phone", "notes", "party_size", "amount", "method")}
+        kayak = None
+        try:
+            kayak = db.execute(
+                "SELECT * FROM kayaks WHERE id = ? AND active = 1", (int(form_values["kayak_id"] or 0),)
+            ).fetchone()
+        except ValueError:
+            pass
+        if kayak is None:
+            form_errors["kayak_id"] = "Pick a kayak."
+
+        booking_date = None
+        try:
+            booking_date = parse_booking_date(form_values["booking_date"])
+        except ValueError:
+            form_errors["booking_date"] = "Pick a valid date."
+        else:
+            if booking_date < local_today():
+                form_errors["booking_date"] = "That date is in the past."
+            elif kayak and not date_range_is_available(db, kayak["id"], booking_date, booking_date):
+                form_errors["booking_date"] = "That kayak is already booked on this date."
+
+        if not form_values["customer_name"]:
+            form_errors["customer_name"] = "Name is required."
+        if form_values["customer_email"] and "@" not in form_values["customer_email"]:
+            form_errors["customer_email"] = "That email looks wrong (leave empty for walk-ups)."
+        try:
+            party_size = max(1, int(form_values.get("party_size") or 1))
+        except ValueError:
+            party_size = 1
+
+        amount = 0
+        if form_values.get("amount"):
+            try:
+                amount = int(form_values["amount"])
+                if amount < 0:
+                    raise ValueError
+            except ValueError:
+                form_errors["amount"] = "Amount must be a positive number of rupees."
+
+        if not form_errors:
+            booking_id, booking = create_booking(
+                db, kayak, booking_date, booking_date, form_values, source="walkup", party_size=party_size
+            )
+            if booking_id is None:
+                form_errors["booking_date"] = "That kayak was just booked on this date."
+            else:
+                if booking["customer_email"]:
+                    queue_booking_emails(booking_id, booking, kayak)
+                else:
+                    db.execute("UPDATE bookings SET email_status = 'skipped' WHERE id = ?", (booking_id,))
+                    db.commit()
+                if amount:
+                    method = form_values.get("method") or "cash"
+                    if method not in ("cash", "card", "transfer"):
+                        method = "cash"
+                    db.execute(
+                        "INSERT INTO payments (booking_id, amount, kind, method, note, recorded_by, created_at) VALUES (?, ?, 'payment', ?, '', ?, ?)",
+                        (booking_id, amount, method, g.user["email"],
+                         datetime.now(timezone.utc).isoformat(timespec="seconds")),
+                    )
+                    record_audit(db, "payment-recorded", "booking", booking_id, f"Rs {amount} {method} (at creation)")
+                    db.commit()
+                flash(f"Booking {booking['booking_reference']} created for {booking['customer_name']}.", "success")
+                return redirect(url_for("admin_booking_detail", booking_id=booking_id))
+
+    return render_template(
+        "admin_new_booking.html",
+        kayaks=kayaks,
+        form_values=form_values,
+        form_errors=form_errors,
+        today=local_today().isoformat(),
+    )
+
+
+@admin_required
 def admin_booking_detail(booking_id):
     db = get_db()
     booking = db.execute(
@@ -1275,6 +1361,7 @@ def create_app(config_overrides=None):
     app.add_url_rule("/admin/logout", "admin_logout", admin_logout, methods=["POST"])
     app.add_url_rule("/admin", "admin", admin)
     app.add_url_rule("/admin/today", "admin_today", admin_today)
+    app.add_url_rule("/admin/bookings/new", "admin_new_booking", admin_new_booking, methods=["GET", "POST"])
     app.add_url_rule(
         "/admin/bookings/<int:booking_id>/checkout", "admin_checkout_booking", admin_checkout_booking, methods=["POST"]
     )

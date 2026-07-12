@@ -1,0 +1,57 @@
+{% extends "admin_base.html" %}
+
+{% block title %}New booking — Admin{% endblock %}
+{% block admin_title %}New booking{% endblock %}
+
+{% block admin_body %}
+  <p><a class="back-link" href="{{ url_for('admin_today') }}">&larr; Back to Today</a></p>
+
+  <section class="admin-tool new-booking-card">
+    <p class="admin-muted">For walk-ups and phone bookings. Email is optional — leave it empty and no confirmation email is attempted.</p>
+    <form method="post" class="edit-form">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <label>Kayak
+        <select name="kayak_id">
+          {% for kayak in kayaks %}
+            <option value="{{ kayak.id }}" {% if form_values.get('kayak_id') == kayak.id|string %}selected{% endif %}>{{ kayak.name }} — Rs {{ kayak.price_per_day }}/day</option>
+          {% endfor %}
+        </select>
+        {% if form_errors.get('kayak_id') %}<span class="field-error">{{ form_errors['kayak_id'] }}</span>{% endif %}
+      </label>
+      <label>Date
+        <input required name="booking_date" type="date" value="{{ form_values.get('booking_date') or today }}" min="{{ today }}">
+        {% if form_errors.get('booking_date') %}<span class="field-error">{{ form_errors['booking_date'] }}</span>{% endif %}
+      </label>
+      <label>Name
+        <input required name="customer_name" value="{{ form_values.get('customer_name', '') }}" placeholder="Walk-up customer">
+        {% if form_errors.get('customer_name') %}<span class="field-error">{{ form_errors['customer_name'] }}</span>{% endif %}
+      </label>
+      <label>Phone / WhatsApp
+        <input name="customer_phone" value="{{ form_values.get('customer_phone', '') }}" placeholder="+230 5XXX XXXX">
+      </label>
+      <label>Email (optional)
+        <input name="customer_email" type="email" value="{{ form_values.get('customer_email', '') }}">
+        {% if form_errors.get('customer_email') %}<span class="field-error">{{ form_errors['customer_email'] }}</span>{% endif %}
+      </label>
+      <label>Party size
+        <input name="party_size" type="number" min="1" max="10" value="{{ form_values.get('party_size') or 1 }}">
+      </label>
+      <label class="full">Notes
+        <textarea name="notes" rows="2">{{ form_values.get('notes', '') }}</textarea>
+      </label>
+      <fieldset class="full payment-at-creation">
+        <legend>Payment taken now (optional)</legend>
+        <div class="payment-row">
+          <input name="amount" type="number" min="1" placeholder="Amount (Rs)" value="{{ form_values.get('amount', '') }}" aria-label="Amount">
+          <select name="method" aria-label="Method">
+            <option value="cash">cash</option>
+            <option value="card">card</option>
+            <option value="transfer">transfer</option>
+          </select>
+        </div>
+        {% if form_errors.get('amount') %}<span class="field-error">{{ form_errors['amount'] }}</span>{% endif %}
+      </fieldset>
+      <button class="button primary" type="submit">Create booking</button>
+    </form>
+  </section>
+{% endblock %}

@@ -5,6 +5,8 @@
 {% block admin_title %}{{ today_label }}{% endblock %}
 
 {% block admin_body %}
+  <p class="new-booking-row"><a class="button primary" href="{{ url_for('admin_new_booking') }}">+ New booking</a></p>
+
   <section class="kpi-strip">
     <article class="kpi"><span>Today's rentals</span><strong>{{ todays|length }}</strong></article>
     <article class="kpi"><span>Expected revenue</span><strong>Rs {{ expected_revenue }}</strong></article>

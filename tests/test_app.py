@@ -397,6 +397,35 @@ def test_login_lands_on_today(client):
     assert response.headers["Location"].endswith("/admin/today")
 
 
+def test_walkup_booking_without_email(app, admin_client):
+    response = admin_client.post("/admin/bookings/new", data={
+        "kayak_id": "1", "booking_date": FUTURE, "customer_name": "Beach Walkup",
+        "customer_email": "", "customer_phone": "+230 5999 0000",
+        "party_size": "2", "amount": "1200", "method": "cash",
+    })
+    assert response.status_code == 302
+    row = db_rows(app, "SELECT * FROM bookings WHERE customer_name = 'Beach Walkup'")[0]
+    assert row["source"] == "walkup"
+    assert row["party_size"] == 2
+    assert row["email_status"] == "skipped"
+    paid = db_rows(app, "SELECT SUM(amount) FROM payments WHERE booking_id = ?", (row["id"],))[0][0]
+    assert paid == 1200
+
+
+def test_walkup_conflict_rejected(app, client, admin_client):
+    client.post("/book", data=booking_form())
+    response = admin_client.post("/admin/bookings/new", data={
+        "kayak_id": "1", "booking_date": FUTURE, "customer_name": "Second",
+    })
+    assert response.status_code == 200
+    assert b"already booked" in response.data
+    assert db_rows(app, "SELECT COUNT(*) FROM bookings")[0][0] == 1
+
+
+def test_walkup_requires_login(client):
+    assert client.get("/admin/bookings/new").status_code == 302
+
+
 # --- CSRF ------------------------------------------------------------------
 
 

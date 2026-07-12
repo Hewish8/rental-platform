@@ -2148,3 +2148,30 @@ dd,
     justify-content: flex-start;
   }
 }
+
+
+.new-booking-row {
+  margin: 0 0 var(--space-4);
+}
+
+.new-booking-card {
+  max-width: 720px;
+}
+
+.payment-at-creation {
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+}
+
+.payment-at-creation legend {
+  padding: 0 0.4rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.payment-row {
+  display: flex;
+  gap: 0.5rem;
+}
