@@ -220,6 +220,14 @@ def init_db(database, owner_email=None, owner_password=None):
         )
         db.execute(
             """
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
+        db.execute(
+            """
             CREATE TABLE IF NOT EXISTS promo_codes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 code TEXT NOT NULL UNIQUE,
@@ -898,6 +906,37 @@ def load_logged_in_user():
         ).fetchone()
 
 
+DEFAULT_SETTINGS = {
+    "whatsapp_number": "+230 5XXX XXXX",
+    "phone_display": "+230 5XXX XXXX",
+    "meeting_point": "Mahebourg Waterfront, near the Pointe des Regates monument",
+    "hours_text": "Open daily, 8:00 - 17:00 (last departure 15:00)",
+}
+
+
+def get_settings(db):
+    stored = {row["key"]: row["value"] for row in db.execute("SELECT key, value FROM settings").fetchall()}
+    merged = dict(DEFAULT_SETTINGS)
+    merged.update(stored)
+    merged["whatsapp_link"] = "https://wa.me/" + "".join(
+        ch for ch in merged["whatsapp_number"] if ch.isdigit()
+    )
+    return merged
+
+
+def owner_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if g.user is None:
+            return redirect(url_for("admin_login", next=request.path))
+        if g.user["role"] != "owner":
+            flash("Only the owner can open that page.", "error")
+            return redirect(url_for("admin_today"))
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
 def admin_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
@@ -1464,7 +1503,7 @@ def validate_kayak_form(form):
     return values, errors
 
 
-@admin_required
+@owner_required
 def admin_fleet():
     db = get_db()
     month_start = local_today().replace(day=1).isoformat()
@@ -1497,7 +1536,7 @@ def admin_fleet():
     )
 
 
-@admin_required
+@owner_required
 def admin_kayak_save(kayak_id=None):
     db = get_db()
     values, errors = validate_kayak_form(request.form)
@@ -1541,7 +1580,7 @@ def admin_kayak_save(kayak_id=None):
     return redirect(url_for("admin_fleet"))
 
 
-@admin_required
+@owner_required
 def admin_kayak_status(kayak_id):
     db = get_db()
     kayak = db.execute("SELECT * FROM kayaks WHERE id = ?", (kayak_id,)).fetchone()
@@ -1559,7 +1598,7 @@ def admin_kayak_status(kayak_id):
     return redirect(url_for("admin_fleet"))
 
 
-@admin_required
+@owner_required
 def admin_kayak_maintenance(kayak_id):
     db = get_db()
     kayak = db.execute("SELECT * FROM kayaks WHERE id = ?", (kayak_id,)).fetchone()
@@ -1590,7 +1629,7 @@ def admin_kayak_maintenance(kayak_id):
     return redirect(url_for("admin_fleet"))
 
 
-@admin_required
+@owner_required
 def admin_kayak_damage(kayak_id):
     db = get_db()
     kayak = db.execute("SELECT * FROM kayaks WHERE id = ?", (kayak_id,)).fetchone()
@@ -1616,7 +1655,7 @@ def admin_kayak_damage(kayak_id):
     return redirect(url_for("admin_fleet"))
 
 
-@admin_required
+@owner_required
 def admin_damage_resolve(report_id):
     db = get_db()
     report = db.execute("SELECT * FROM damage_reports WHERE id = ?", (report_id,)).fetchone()
@@ -1686,7 +1725,7 @@ def admin_more():
     return render_template("admin_more.html")
 
 
-@admin_required
+@owner_required
 def admin_customers():
     db = get_db()
     q = request.args.get("q", "").strip().lower()
@@ -1730,7 +1769,7 @@ def admin_customers():
     return render_template("admin_customers.html", customers=result, notes=notes, q=q)
 
 
-@admin_required
+@owner_required
 def admin_customer_note():
     db = get_db()
     identity = request.form.get("identity", "").strip()
@@ -1753,14 +1792,14 @@ def admin_customer_note():
     return redirect(url_for("admin_customers", q=request.form.get("q", "")))
 
 
-@admin_required
+@owner_required
 def admin_promos():
     db = get_db()
     promos = db.execute("SELECT * FROM promo_codes ORDER BY active DESC, id DESC").fetchall()
     return render_template("admin_promos.html", promos=promos)
 
 
-@admin_required
+@owner_required
 def admin_promo_create():
     db = get_db()
     code = request.form.get("code", "").strip().upper()
@@ -1800,7 +1839,7 @@ def admin_promo_create():
     return redirect(url_for("admin_promos"))
 
 
-@admin_required
+@owner_required
 def admin_promo_toggle(promo_id):
     db = get_db()
     promo = db.execute("SELECT * FROM promo_codes WHERE id = ?", (promo_id,)).fetchone()
@@ -1814,7 +1853,7 @@ def admin_promo_toggle(promo_id):
     return redirect(url_for("admin_promos"))
 
 
-@admin_required
+@owner_required
 def admin_reports():
     db = get_db()
     month = request.args.get("month", local_today().strftime("%Y-%m"))
@@ -1893,7 +1932,78 @@ def admin_reports():
     )
 
 
-@admin_required
+@owner_required
+def admin_users():
+    db = get_db()
+    users = db.execute("SELECT id, email, role, active, created_at FROM users ORDER BY id").fetchall()
+    return render_template("admin_users.html", users=users)
+
+
+@owner_required
+def admin_user_create():
+    db = get_db()
+    email = request.form.get("email", "").strip().lower()
+    password = request.form.get("password", "")
+    role = request.form.get("role", "staff")
+    if role not in ("owner", "staff"):
+        role = "staff"
+    if "@" not in email or len(password) < 8:
+        flash("Enter a valid email and a password of at least 8 characters.", "error")
+        return redirect(url_for("admin_users"))
+    try:
+        db.execute(
+            "INSERT INTO users (email, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+            (email, generate_password_hash(password), role,
+             datetime.now(timezone.utc).isoformat(timespec="seconds")),
+        )
+    except sqlite3.IntegrityError:
+        flash("That email already has an account.", "error")
+        return redirect(url_for("admin_users"))
+    record_audit(db, "created", "user", email, role)
+    db.commit()
+    flash(f"{email} can now sign in as {role}.", "success")
+    return redirect(url_for("admin_users"))
+
+
+@owner_required
+def admin_user_toggle(user_id):
+    db = get_db()
+    user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if user is None:
+        return redirect(url_for("admin_users"))
+    if user["id"] == g.user["id"]:
+        flash("You cannot deactivate your own account.", "error")
+        return redirect(url_for("admin_users"))
+    new_state = 0 if user["active"] else 1
+    db.execute("UPDATE users SET active = ? WHERE id = ?", (new_state, user_id))
+    record_audit(db, "activated" if new_state else "deactivated", "user", user["email"])
+    db.commit()
+    flash(f"{user['email']} {'reactivated' if new_state else 'deactivated'}.", "success")
+    return redirect(url_for("admin_users"))
+
+
+@owner_required
+def admin_settings():
+    db = get_db()
+    if request.method == "POST":
+        changed = []
+        for key in DEFAULT_SETTINGS:
+            value = request.form.get(key, "").strip()
+            if value:
+                db.execute(
+                    "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+                    (key, value, value),
+                )
+                changed.append(key)
+        if changed:
+            record_audit(db, "updated", "settings", None, ", ".join(changed))
+            db.commit()
+            flash("Settings saved. The website updates immediately.", "success")
+        return redirect(url_for("admin_settings"))
+    return render_template("admin_settings.html", settings=get_settings(db))
+
+
+@owner_required
 def admin_audit():
     db = get_db()
     entries = db.execute(
@@ -1902,7 +2012,7 @@ def admin_audit():
     return render_template("audit.html", entries=entries)
 
 
-@admin_required
+@owner_required
 def admin_test_email():
     cfg = current_app.config
     recipient = request.form.get("test_email", "").strip() or cfg["OWNER_EMAIL"]
@@ -1945,7 +2055,13 @@ def create_app(config_overrides=None):
 
     @app.context_processor
     def inject_admin_context():
-        return {"smtp_configured": smtp_is_configured(app.config)}
+        context = {"smtp_configured": smtp_is_configured(app.config)}
+        try:
+            context["site"] = get_settings(get_db())
+        except sqlite3.Error:
+            context["site"] = dict(DEFAULT_SETTINGS, whatsapp_link="https://wa.me/")
+        context["is_owner"] = bool(getattr(g, "user", None) and g.user["role"] == "owner")
+        return context
     app.before_request(check_csrf)
     app.before_request(load_logged_in_user)
     app.teardown_appcontext(close_db)
@@ -1967,6 +2083,10 @@ def create_app(config_overrides=None):
     app.add_url_rule("/admin/customers", "admin_customers", admin_customers)
     app.add_url_rule("/admin/customers/note", "admin_customer_note", admin_customer_note, methods=["POST"])
     app.add_url_rule("/admin/reports", "admin_reports", admin_reports)
+    app.add_url_rule("/admin/users", "admin_users", admin_users)
+    app.add_url_rule("/admin/users/new", "admin_user_create", admin_user_create, methods=["POST"])
+    app.add_url_rule("/admin/users/<int:user_id>/toggle", "admin_user_toggle", admin_user_toggle, methods=["POST"])
+    app.add_url_rule("/admin/settings", "admin_settings", admin_settings, methods=["GET", "POST"])
     app.add_url_rule("/admin/promos", "admin_promos", admin_promos)
     app.add_url_rule("/admin/promos/new", "admin_promo_create", admin_promo_create, methods=["POST"])
     app.add_url_rule("/admin/promos/<int:promo_id>/toggle", "admin_promo_toggle", admin_promo_toggle, methods=["POST"])

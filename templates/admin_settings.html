@@ -1,0 +1,28 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Settings — Admin{% endblock %}
+{% block admin_title %}Settings{% endblock %}
+
+{% block admin_body %}
+  <p><a class="back-link" href="{{ url_for('admin_more') }}">&larr; More</a></p>
+
+  <section class="admin-tool new-booking-card">
+    <p class="admin-muted">These appear on the public website (contact links, FAQ, footer, and confirmation pages). Changes apply immediately.</p>
+    <form method="post" class="edit-form">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <label>WhatsApp number
+        <input name="whatsapp_number" value="{{ settings.whatsapp_number }}" placeholder="+230 5123 4567">
+      </label>
+      <label>Phone (shown in footer)
+        <input name="phone_display" value="{{ settings.phone_display }}" placeholder="+230 5123 4567">
+      </label>
+      <label class="full">Meeting point
+        <input name="meeting_point" value="{{ settings.meeting_point }}">
+      </label>
+      <label class="full">Opening hours
+        <input name="hours_text" value="{{ settings.hours_text }}">
+      </label>
+      <button class="button primary" type="submit">Save settings</button>
+    </form>
+  </section>
+{% endblock %}

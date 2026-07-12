@@ -241,16 +241,16 @@
         </div>
 
         <p class="payment-note">{{ icon('shield-check', 16) }}No payment now — pay on arrival, cash or card.</p>
-        <p class="whatsapp-alt">Prefer WhatsApp? <a href="https://wa.me/2305XXXXXXX?text=Hi%2C%20I%27d%20like%20to%20book%20a%20kayak">{{ icon('whatsapp', 16) }} Message us your booking</a></p>
+        <p class="whatsapp-alt">Prefer WhatsApp? <a href="{{ site.whatsapp_link }}?text=Hi%2C%20I%27d%20like%20to%20book%20a%20kayak">{{ icon('whatsapp', 16) }} Message us your booking</a></p>
       </form>
     </section>
     <section class="location-faq" id="faq">
       <div class="location-card">
         <p class="eyebrow">Where to find us</p>
         <h2>Mahebourg waterfront</h2>
-        <p class="location-line">{{ icon('map-pin') }}Mahebourg Waterfront, near the Pointe des Regates monument <em>(exact meeting point sent with your confirmation)</em></p>
-        <p class="location-line">{{ icon('clock') }}Open daily, 8:00 – 17:00 (last departure 15:00)</p>
-        <p class="location-line">{{ icon('whatsapp') }}<a href="https://wa.me/2305XXXXXXX">WhatsApp us</a> for questions or same-day requests</p>
+        <p class="location-line">{{ icon('map-pin') }}{{ site.meeting_point }} <em>(exact meeting point sent with your confirmation)</em></p>
+        <p class="location-line">{{ icon('clock') }}{{ site.hours_text }}</p>
+        <p class="location-line">{{ icon('whatsapp') }}<a href="{{ site.whatsapp_link }}">WhatsApp us</a> for questions or same-day requests</p>
         <a class="button primary" href="https://www.google.com/maps/search/?api=1&query=Mahebourg+Waterfront+Mauritius" target="_blank" rel="noopener">{{ icon('map-pin') }}Get directions</a>
       </div>
       <div class="faq">
@@ -307,8 +307,8 @@
       </div>
       <div>
         <p class="footer-heading">Contact</p>
-        <p><a href="https://wa.me/2305XXXXXXX">{{ icon('whatsapp', 16) }} WhatsApp: +230 5XXX XXXX</a></p>
-        <p><a href="tel:+2305XXXXXXX">{{ icon('phone', 16) }} +230 5XXX XXXX</a></p>
+        <p><a href="{{ site.whatsapp_link }}">{{ icon('whatsapp', 16) }} WhatsApp: {{ site.whatsapp_number }}</a></p>
+        <p><a href="tel:{{ site.phone_display.replace(' ', '') }}">{{ icon('phone', 16) }} {{ site.phone_display }}</a></p>
         <p><a href="mailto:{{ owner_email or 'hello@example.com' }}">{{ icon('mail', 16) }} Email us</a></p>
       </div>
       <div>

@@ -1,0 +1,68 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Staff — Admin{% endblock %}
+{% block admin_title %}Staff{% endblock %}
+
+{% block admin_body %}
+  <p><a class="back-link" href="{{ url_for('admin_more') }}">&larr; More</a></p>
+
+  <div class="detail-grid">
+    <section class="booking-table-wrap">
+      <table class="booking-table">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Since</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for user in users %}
+            <tr>
+              <td><strong>{{ user.email }}</strong></td>
+              <td><span class="status-chip {% if user.role == 'owner' %}status-confirmed{% else %}status-returned{% endif %}">{{ user.role }}</span></td>
+              <td>
+                {% if user.active %}
+                  <span class="pay-chip paid">Active</span>
+                {% else %}
+                  <span class="status-chip status-cancelled">Deactivated</span>
+                {% endif %}
+              </td>
+              <td>{{ user.created_at[:10] }}</td>
+              <td>
+                {% if user.id != g.user.id %}
+                  <form method="post" action="{{ url_for('admin_user_toggle', user_id=user.id) }}">
+                    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                    <button class="button resend" type="submit">{{ 'Deactivate' if user.active else 'Reactivate' }}</button>
+                  </form>
+                {% else %}
+                  <span class="admin-muted">you</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="admin-tool">
+      <p class="eyebrow">New account</p>
+      <h2>Add staff</h2>
+      <p class="admin-muted">Staff can run the day (Today, Calendar, Bookings, check-in/out, payments) but can't change the fleet, prices, promos, reports, or accounts.</p>
+      <form method="post" action="{{ url_for('admin_user_create') }}" class="edit-form">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <label>Email <input required name="email" type="email"></label>
+        <label>Password <input required name="password" type="password" minlength="8" autocomplete="new-password"></label>
+        <label>Role
+          <select name="role">
+            <option value="staff">staff</option>
+            <option value="owner">owner</option>
+          </select>
+        </label>
+        <button class="button primary" type="submit">Create account</button>
+      </form>
+    </section>
+  </div>
+{% endblock %}

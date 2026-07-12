@@ -592,6 +592,74 @@ def test_promo_api(client, admin_client):
     assert data["valid"] is False
 
 
+# --- Roles & settings --------------------------------------------------------
+
+
+@pytest.fixture
+def staff_client(app, admin_client):
+    admin_client.post("/admin/users/new", data={
+        "email": "staff@test.mu", "password": "staff-password-1", "role": "staff",
+    })
+    client = app.test_client()
+    client.post("/admin/login", data={"email": "staff@test.mu", "password": "staff-password-1"})
+    return client
+
+
+def test_staff_can_run_the_day(app, client, staff_client):
+    today_iso = date.today().isoformat()
+    client.post("/book", data=booking_form(booking_date=today_iso))
+    booking_id = db_rows(app, "SELECT id FROM bookings")[0][0]
+
+    assert staff_client.get("/admin/today").status_code == 200
+    assert staff_client.get("/admin").status_code == 200
+    assert staff_client.get("/admin/calendar").status_code == 200
+    staff_client.post(f"/admin/bookings/{booking_id}/checkout")
+    assert db_rows(app, "SELECT status FROM bookings WHERE id = ?", (booking_id,))[0][0] == "on_water"
+    staff_client.post(f"/admin/bookings/{booking_id}/payments", data={"amount": "1200", "method": "cash"})
+    assert db_rows(app, "SELECT COUNT(*) FROM payments")[0][0] == 1
+
+
+def test_staff_blocked_from_owner_pages(staff_client):
+    for path in ["/admin/fleet", "/admin/reports", "/admin/promos", "/admin/customers",
+                 "/admin/audit", "/admin/users", "/admin/settings"]:
+        response = staff_client.get(path)
+        assert response.status_code == 302, path
+        assert "/admin/today" in response.headers["Location"], path
+    # Owner-only mutations too
+    response = staff_client.post("/admin/fleet/1/status", data={"status": "retired"})
+    assert response.status_code == 302
+    assert "/admin/today" in response.headers["Location"]
+
+
+def test_user_management(app, admin_client):
+    admin_client.post("/admin/users/new", data={
+        "email": "helper@test.mu", "password": "helper-pass-123", "role": "staff",
+    })
+    user_id = db_rows(app, "SELECT id FROM users WHERE email = 'helper@test.mu'")[0][0]
+    admin_client.post(f"/admin/users/{user_id}/toggle")
+    assert db_rows(app, "SELECT active FROM users WHERE id = ?", (user_id,))[0][0] == 0
+    # Deactivated staff cannot sign in
+    client = app.test_client()
+    client.post("/admin/login", data={"email": "helper@test.mu", "password": "helper-pass-123"})
+    assert client.get("/admin/today").status_code == 302
+    # Short password rejected
+    admin_client.post("/admin/users/new", data={"email": "x@test.mu", "password": "short"})
+    assert db_rows(app, "SELECT COUNT(*) FROM users WHERE email = 'x@test.mu'")[0][0] == 0
+
+
+def test_settings_flow_to_public_site(app, client, admin_client):
+    admin_client.post("/admin/settings", data={
+        "whatsapp_number": "+230 5777 8888",
+        "phone_display": "+230 5777 8888",
+        "meeting_point": "Blue Bay public beach, kiosk 3",
+        "hours_text": "Open daily 7:30 - 16:30",
+    })
+    page = client.get("/")
+    assert b"Blue Bay public beach, kiosk 3" in page.data
+    assert b"wa.me/23057778888" in page.data
+    assert b"+230 5777 8888" in page.data
+
+
 # --- CSRF ------------------------------------------------------------------
 
 

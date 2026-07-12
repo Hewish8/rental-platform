@@ -21,5 +21,13 @@
       <h2>Activity log</h2>
       <p class="admin-muted">Who changed what, when — every booking, payment, and fleet action.</p>
     </a>
+    <a class="admin-tool more-card" href="{{ url_for('admin_users') }}">
+      <h2>Staff</h2>
+      <p class="admin-muted">Add staff logins (Today, Calendar, Bookings only) and deactivate old ones.</p>
+    </a>
+    <a class="admin-tool more-card" href="{{ url_for('admin_settings') }}">
+      <h2>Settings</h2>
+      <p class="admin-muted">WhatsApp number, phone, meeting point, and opening hours shown on the website.</p>
+    </a>
   </section>
 {% endblock %}

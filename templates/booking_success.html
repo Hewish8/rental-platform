@@ -37,7 +37,7 @@
       <div class="actions confirm-actions">
         <a class="button primary" href="{{ url_for('booking_ics', reference=booking.booking_reference) }}">{{ icon('download') }}Add to calendar</a>
         <a class="button secondary" href="https://www.google.com/maps/search/?api=1&query=Mahebourg+Waterfront+Mauritius" target="_blank" rel="noopener">{{ icon('map-pin') }}Get directions</a>
-        <a class="button secondary" href="https://wa.me/2305XXXXXXX?text=Hi%2C%20my%20booking%20reference%20is%20{{ booking.booking_reference }}">{{ icon('whatsapp') }}Message us</a>
+        <a class="button secondary" href="{{ site.whatsapp_link }}?text=Hi%2C%20my%20booking%20reference%20is%20{{ booking.booking_reference }}">{{ icon('whatsapp') }}Message us</a>
       </div>
 
       {% if booking.email_status == 'failed' %}
