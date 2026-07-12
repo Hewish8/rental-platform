@@ -1,0 +1,21 @@
+{% extends "admin_base.html" %}
+
+{% block title %}More — Admin{% endblock %}
+{% block admin_title %}More{% endblock %}
+
+{% block admin_body %}
+  <section class="more-grid">
+    <a class="admin-tool more-card" href="{{ url_for('admin_customers') }}">
+      <h2>Customers</h2>
+      <p class="admin-muted">Repeat visitors, spend, notes and flags — built automatically from bookings.</p>
+    </a>
+    <a class="admin-tool more-card" href="{{ url_for('admin_reports') }}">
+      <h2>Reports</h2>
+      <p class="admin-muted">Monthly revenue, utilization per kayak, payment methods, and booking sources.</p>
+    </a>
+    <a class="admin-tool more-card" href="{{ url_for('admin_audit') }}">
+      <h2>Activity log</h2>
+      <p class="admin-muted">Who changed what, when — every booking, payment, and fleet action.</p>
+    </a>
+  </section>
+{% endblock %}

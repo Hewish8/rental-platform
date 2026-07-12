@@ -507,6 +507,40 @@ def test_resource_calendar(app, client, admin_client):
     assert admin_client.get("/admin/calendar?start=nonsense").status_code == 200
 
 
+def test_customers_view_aggregates(app, client, admin_client):
+    client.post("/book", data=booking_form())
+    client.post("/book", data=booking_form(
+        booking_date=(date.today() + timedelta(days=11)).isoformat()
+    ))
+    client.post("/book", data=booking_form(
+        booking_date=(date.today() + timedelta(days=12)).isoformat(),
+        customer_name="Other Person", customer_email="other@x.mu", customer_phone="+230 5111 1111",
+    ))
+    page = admin_client.get("/admin/customers")
+    assert page.status_code == 200
+    assert b"Jane Visitor" in page.data and b"Other Person" in page.data
+    assert b"Rs 2400" in page.data  # two visits aggregated
+
+    # Note + flag round-trips
+    admin_client.post("/admin/customers/note", data={
+        "identity": "+23050000000", "note": "prefers tandem", "flagged": "on",
+    })
+    page = admin_client.get("/admin/customers")
+    assert b"prefers tandem" in page.data
+
+
+def test_reports_page(app, client, admin_client):
+    client.post("/book", data=booking_form())
+    booking_id = db_rows(app, "SELECT id FROM bookings")[0][0]
+    admin_client.post(f"/admin/bookings/{booking_id}/payments", data={"amount": "1200", "method": "cash"})
+    month = FUTURE[:7]
+    page = admin_client.get(f"/admin/reports?month={month}")
+    assert page.status_code == 200
+    assert b"Rs 1200" in page.data
+    assert b"Lagoon Explorer" in page.data
+    assert admin_client.get("/admin/reports?month=garbage").status_code == 200
+
+
 # --- CSRF ------------------------------------------------------------------
 
 

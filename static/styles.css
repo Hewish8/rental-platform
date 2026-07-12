@@ -2327,3 +2327,115 @@ dd,
 .row-maintenance .resource-cell {
   background: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(148, 98, 0, 0.08) 6px, rgba(148, 98, 0, 0.08) 12px);
 }
+
+
+/* --- More / customers / reports ---------------------------------------------- */
+
+.more-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.more-card {
+  display: block;
+  transition: transform var(--ease-micro), box-shadow var(--ease-micro);
+}
+
+.more-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-raised);
+}
+
+.more-card h2 {
+  font-size: 1.2rem;
+}
+
+.customers-search {
+  max-width: 480px;
+  margin-bottom: var(--space-4);
+}
+
+.note-form {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  min-width: 20rem;
+}
+
+.note-form input[name="note"] {
+  padding: 0.45rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.flag-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.flag-label input {
+  width: auto;
+}
+
+.row-flagged td {
+  background: rgba(255, 200, 87, 0.12);
+}
+
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.report-table th,
+.report-table td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  font-size: 0.92rem;
+}
+
+.report-table th {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.util-row {
+  display: grid;
+  grid-template-columns: 8rem 1fr 3rem;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: 0.4rem;
+  font-size: 0.88rem;
+}
+
+.util-bar {
+  height: 0.6rem;
+  border-radius: var(--radius-pill);
+  background: rgba(23, 49, 45, 0.08);
+  overflow: hidden;
+}
+
+.util-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--sea);
+}
+
+@media (max-width: 780px) {
+  .more-grid,
+  .report-grid {
+    grid-template-columns: 1fr;
+  }
+}

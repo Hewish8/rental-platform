@@ -220,6 +220,17 @@ def init_db(database, owner_email=None, owner_password=None):
         )
         db.execute(
             """
+            CREATE TABLE IF NOT EXISTS customer_notes (
+                identity TEXT PRIMARY KEY,
+                note TEXT NOT NULL DEFAULT '',
+                flagged INTEGER NOT NULL DEFAULT 0,
+                updated_by TEXT,
+                updated_at TEXT
+            )
+            """
+        )
+        db.execute(
+            """
             CREATE TABLE IF NOT EXISTS audit_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_email TEXT NOT NULL,
@@ -1596,6 +1607,165 @@ def admin_calendar():
     )
 
 
+def customer_identity(booking):
+    phone = (booking["customer_phone"] or "").replace(" ", "")
+    if phone:
+        return phone
+    email = (booking["customer_email"] or "").strip().lower()
+    return email or booking["customer_name"].strip().lower()
+
+
+@admin_required
+def admin_more():
+    return render_template("admin_more.html")
+
+
+@admin_required
+def admin_customers():
+    db = get_db()
+    q = request.args.get("q", "").strip().lower()
+    bookings = db.execute(
+        """
+        SELECT bookings.*, kayaks.name AS kayak_name
+        FROM bookings JOIN kayaks ON kayaks.id = bookings.kayak_id
+        ORDER BY bookings.start_date DESC
+        """
+    ).fetchall()
+    customers = {}
+    for booking in bookings:
+        identity = customer_identity(booking)
+        entry = customers.setdefault(identity, {
+            "identity": identity,
+            "name": booking["customer_name"],
+            "email": booking["customer_email"],
+            "phone": booking["customer_phone"],
+            "visits": 0,
+            "cancellations": 0,
+            "spent": 0,
+            "last_visit": booking["start_date"],
+        })
+        if booking["status"] in BLOCKING_STATUSES:
+            entry["visits"] += 1
+            entry["spent"] += booking["total_price"] or 0
+            entry["last_visit"] = max(entry["last_visit"], booking["start_date"])
+        elif booking["status"] in ("cancelled", "no_show"):
+            entry["cancellations"] += 1
+    notes = {
+        row["identity"]: row
+        for row in db.execute("SELECT * FROM customer_notes").fetchall()
+    }
+    result = sorted(customers.values(), key=lambda c: c["last_visit"], reverse=True)
+    if q:
+        result = [
+            c for c in result
+            if q in (c["name"] or "").lower() or q in (c["email"] or "").lower()
+            or q in (c["phone"] or "").lower()
+        ]
+    return render_template("admin_customers.html", customers=result, notes=notes, q=q)
+
+
+@admin_required
+def admin_customer_note():
+    db = get_db()
+    identity = request.form.get("identity", "").strip()
+    if not identity:
+        return redirect(url_for("admin_customers"))
+    note = request.form.get("note", "").strip()
+    flagged = 1 if request.form.get("flagged") else 0
+    db.execute(
+        """
+        INSERT INTO customer_notes (identity, note, flagged, updated_by, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(identity) DO UPDATE SET note = ?, flagged = ?, updated_by = ?, updated_at = ?
+        """,
+        (identity, note, flagged, g.user["email"], datetime.now(timezone.utc).isoformat(timespec="seconds"),
+         note, flagged, g.user["email"], datetime.now(timezone.utc).isoformat(timespec="seconds")),
+    )
+    record_audit(db, "customer-note", "customer", identity, note[:120])
+    db.commit()
+    flash("Customer note saved.", "success")
+    return redirect(url_for("admin_customers", q=request.form.get("q", "")))
+
+
+@admin_required
+def admin_reports():
+    db = get_db()
+    month = request.args.get("month", local_today().strftime("%Y-%m"))
+    try:
+        month_start = parse_booking_date(month + "-01")
+    except ValueError:
+        month = local_today().strftime("%Y-%m")
+        month_start = parse_booking_date(month + "-01")
+    next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+    days_in_month = (next_month - month_start).days
+
+    bookings = db.execute(
+        """
+        SELECT bookings.*, kayaks.name AS kayak_name
+        FROM bookings JOIN kayaks ON kayaks.id = bookings.kayak_id
+        WHERE bookings.start_date >= ? AND bookings.start_date < ?
+        """,
+        (month_start.isoformat(), next_month.isoformat()),
+    ).fetchall()
+    active = [b for b in bookings if b["status"] in BLOCKING_STATUSES]
+    cancelled = [b for b in bookings if b["status"] in ("cancelled", "no_show")]
+
+    revenue = sum(b["total_price"] or 0 for b in active)
+    by_kayak = {}
+    booked_days = {}
+    weekday_counts = [0] * 7
+    source_counts = {}
+    for b in active:
+        by_kayak.setdefault(b["kayak_name"], {"rentals": 0, "revenue": 0})
+        by_kayak[b["kayak_name"]]["rentals"] += 1
+        by_kayak[b["kayak_name"]]["revenue"] += b["total_price"] or 0
+        booked_days[b["kayak_id"]] = booked_days.get(b["kayak_id"], 0) + count_days(
+            parse_booking_date(b["start_date"]), parse_booking_date(b["end_date"])
+        )
+        weekday_counts[parse_booking_date(b["start_date"]).weekday()] += 1
+        source_counts[b["source"]] = source_counts.get(b["source"], 0) + 1
+
+    payments_rows = db.execute(
+        """
+        SELECT method, kind, SUM(amount) AS total
+        FROM payments WHERE created_at >= ? AND created_at < ?
+        GROUP BY method, kind
+        """,
+        (month_start.isoformat(), next_month.isoformat()),
+    ).fetchall()
+
+    kayaks = db.execute("SELECT * FROM kayaks WHERE status != 'retired' ORDER BY id").fetchall()
+    utilization = [
+        {
+            "name": kayak["name"],
+            "booked": booked_days.get(kayak["id"], 0),
+            "percent": round(100 * booked_days.get(kayak["id"], 0) / days_in_month),
+        }
+        for kayak in kayaks
+    ]
+    weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    busiest = max(zip(weekday_counts, weekdays))[1] if any(weekday_counts) else None
+
+    prev_month = (month_start - timedelta(days=1)).strftime("%Y-%m")
+    next_month_str = next_month.strftime("%Y-%m")
+    return render_template(
+        "admin_reports.html",
+        month=month,
+        month_label=month_start.strftime("%B %Y"),
+        revenue=revenue,
+        booking_count=len(active),
+        cancelled_count=len(cancelled),
+        by_kayak=by_kayak,
+        utilization=utilization,
+        payments_rows=payments_rows,
+        source_counts=source_counts,
+        busiest=busiest,
+        prev_month=prev_month,
+        next_month=next_month_str,
+        show_next=next_month <= local_today(),
+    )
+
+
 @admin_required
 def admin_audit():
     db = get_db()
@@ -1665,6 +1835,10 @@ def create_app(config_overrides=None):
     app.add_url_rule("/admin/today", "admin_today", admin_today)
     app.add_url_rule("/admin/bookings/new", "admin_new_booking", admin_new_booking, methods=["GET", "POST"])
     app.add_url_rule("/admin/calendar", "admin_calendar", admin_calendar)
+    app.add_url_rule("/admin/more", "admin_more", admin_more)
+    app.add_url_rule("/admin/customers", "admin_customers", admin_customers)
+    app.add_url_rule("/admin/customers/note", "admin_customer_note", admin_customer_note, methods=["POST"])
+    app.add_url_rule("/admin/reports", "admin_reports", admin_reports)
     app.add_url_rule("/admin/fleet", "admin_fleet", admin_fleet)
     app.add_url_rule("/admin/fleet/new", "admin_kayak_new", admin_kayak_save, methods=["POST"])
     app.add_url_rule("/admin/fleet/<int:kayak_id>/save", "admin_kayak_save", admin_kayak_save, methods=["POST"])

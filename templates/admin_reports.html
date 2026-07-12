@@ -1,0 +1,76 @@
+{% extends "admin_base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block title %}Reports — Admin{% endblock %}
+{% block admin_title %}Reports{% endblock %}
+
+{% block admin_body %}
+  <p><a class="back-link" href="{{ url_for('admin_more') }}">&larr; More</a></p>
+
+  <div class="resource-toolbar">
+    <a class="icon-button" href="{{ url_for('admin_reports', month=prev_month) }}" aria-label="Previous month">{{ icon('chevron-left') }}</a>
+    <strong>{{ month_label }}</strong>
+    {% if show_next %}
+      <a class="icon-button" href="{{ url_for('admin_reports', month=next_month) }}" aria-label="Next month">{{ icon('chevron-right') }}</a>
+    {% endif %}
+  </div>
+
+  <section class="kpi-strip">
+    <article class="kpi"><span>Revenue (booked)</span><strong>Rs {{ revenue }}</strong></article>
+    <article class="kpi"><span>Rentals</span><strong>{{ booking_count }}</strong></article>
+    <article class="kpi"><span>Cancelled / no-show</span><strong>{{ cancelled_count }}</strong></article>
+    <article class="kpi"><span>Busiest day</span><strong>{{ busiest or '—' }}</strong></article>
+  </section>
+
+  <div class="report-grid">
+    <section class="admin-tool">
+      <p class="eyebrow">By kayak</p>
+      <table class="report-table">
+        <thead><tr><th>Kayak</th><th>Rentals</th><th>Revenue</th></tr></thead>
+        <tbody>
+          {% for name, stat in by_kayak.items() %}
+            <tr><td>{{ name }}</td><td>{{ stat.rentals }}</td><td>Rs {{ stat.revenue }}</td></tr>
+          {% else %}
+            <tr><td colspan="3">No rentals this month.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <p class="eyebrow history-title">Utilization</p>
+      {% for row in utilization %}
+        <div class="util-row">
+          <span>{{ row.name }}</span>
+          <div class="util-bar"><div class="util-fill" style="width: {{ row.percent }}%"></div></div>
+          <strong>{{ row.percent }}%</strong>
+        </div>
+      {% endfor %}
+    </section>
+
+    <section class="admin-tool">
+      <p class="eyebrow">Money received (recorded payments)</p>
+      <table class="report-table">
+        <thead><tr><th>Method</th><th>Kind</th><th>Total</th></tr></thead>
+        <tbody>
+          {% for row in payments_rows %}
+            <tr><td>{{ row.method }}</td><td>{{ row.kind }}</td><td>Rs {{ row.total }}</td></tr>
+          {% else %}
+            <tr><td colspan="3">No payments recorded this month.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <p class="eyebrow history-title">Booking source</p>
+      <table class="report-table">
+        <tbody>
+          {% for source, count in source_counts.items() %}
+            <tr><td>{{ source }}</td><td>{{ count }}</td></tr>
+          {% else %}
+            <tr><td colspan="2">—</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <p class="admin-muted" style="margin-top: 1rem;">Need the raw data? <a href="{{ url_for('admin_bookings_csv') }}" style="text-decoration: underline;">Export all bookings as CSV</a>.</p>
+    </section>
+  </div>
+{% endblock %}

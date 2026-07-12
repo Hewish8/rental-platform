@@ -1,0 +1,55 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Customers — Admin{% endblock %}
+{% block admin_title %}Customers{% endblock %}
+
+{% block admin_body %}
+  <p><a class="back-link" href="{{ url_for('admin_more') }}">&larr; More</a></p>
+
+  <form class="list-search customers-search" method="get" action="{{ url_for('admin_customers') }}">
+    <input name="q" value="{{ q }}" placeholder="Search name, phone, or email" aria-label="Search customers">
+    <button class="button secondary" type="submit">Search</button>
+  </form>
+
+  <section class="booking-table-wrap">
+    <table class="booking-table">
+      <thead>
+        <tr>
+          <th>Customer</th>
+          <th>Visits</th>
+          <th>Spent</th>
+          <th>Last visit</th>
+          <th>Cancellations</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for customer in customers %}
+          {% set meta = notes.get(customer.identity) %}
+          <tr {% if meta and meta.flagged %}class="row-flagged"{% endif %}>
+            <td>
+              <strong>{% if meta and meta.flagged %}🚩 {% endif %}{{ customer.name }}</strong>
+              <span>{{ customer.phone or customer.email }}</span>
+            </td>
+            <td>{{ customer.visits }}</td>
+            <td>Rs {{ customer.spent }}</td>
+            <td>{{ customer.last_visit }}</td>
+            <td>{{ customer.cancellations or '' }}</td>
+            <td>
+              <form class="note-form" method="post" action="{{ url_for('admin_customer_note') }}">
+                <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                <input type="hidden" name="identity" value="{{ customer.identity }}">
+                <input type="hidden" name="q" value="{{ q }}">
+                <input name="note" value="{{ meta.note if meta else '' }}" placeholder="Preferences, hotel…">
+                <label class="flag-label"><input type="checkbox" name="flagged" {% if meta and meta.flagged %}checked{% endif %}> Flag</label>
+                <button class="button resend" type="submit">Save</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6">No customers yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+{% endblock %}

@@ -23,7 +23,7 @@
       <a href="{{ url_for('admin') }}" {% if request.endpoint in ['admin', 'admin_booking_detail'] %}class="is-active" aria-current="page"{% endif %}>Bookings</a>
       <a href="{{ url_for('admin_calendar') }}" {% if request.endpoint == 'admin_calendar' %}class="is-active" aria-current="page"{% endif %}>Calendar</a>
       <a href="{{ url_for('admin_fleet') }}" {% if request.endpoint == 'admin_fleet' %}class="is-active" aria-current="page"{% endif %}>Fleet</a>
-      <a href="{{ url_for('admin_audit') }}" {% if request.endpoint == 'admin_audit' %}class="is-active" aria-current="page"{% endif %}>Activity</a>
+      <a href="{{ url_for('admin_more') }}" {% if request.endpoint in ['admin_more', 'admin_customers', 'admin_reports', 'admin_audit', 'admin_promos'] %}class="is-active" aria-current="page"{% endif %}>More</a>
     </nav>
 
     {% if not smtp_configured %}
