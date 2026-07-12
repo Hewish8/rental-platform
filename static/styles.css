@@ -2222,3 +2222,108 @@ dd,
     grid-template-columns: 1fr;
   }
 }
+
+
+/* --- Resource calendar ------------------------------------------------------ */
+
+.resource-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  color: white;
+}
+
+.resource-toolbar strong {
+  min-width: 12rem;
+  text-align: center;
+}
+
+.resource-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.97);
+}
+
+.resource-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+}
+
+.resource-table th,
+.resource-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--line);
+  border-right: 1px solid rgba(23, 49, 45, 0.07);
+  text-align: left;
+  vertical-align: top;
+}
+
+.resource-table thead th {
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.resource-table thead th.is-today {
+  color: var(--sea);
+}
+
+.resource-kayak {
+  min-width: 9rem;
+  font-weight: 650;
+}
+
+.resource-kayak span {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.resource-cell {
+  height: 3.6rem;
+  min-width: 6.5rem;
+}
+
+.cell-book {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  min-height: 2.8rem;
+  border: 1px dashed transparent;
+  border-radius: var(--radius-sm);
+  color: transparent;
+  font-weight: 700;
+}
+
+.cell-book:hover,
+.cell-book:focus-visible {
+  border-color: rgba(0, 123, 131, 0.5);
+  background: var(--surface-tint);
+  color: var(--sea);
+}
+
+.cell-booking {
+  display: block;
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 650;
+  line-height: 1.25;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 11rem;
+}
+
+.cell-booking.status-confirmed { background: var(--surface-tint); color: var(--sea); }
+.cell-booking.status-on_water { background: #e3f0fc; color: #0b5394; }
+.cell-booking.status-returned { background: rgba(23, 49, 45, 0.08); color: var(--muted); }
+
+.row-maintenance .resource-cell {
+  background: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(148, 98, 0, 0.08) 6px, rgba(148, 98, 0, 0.08) 12px);
+}

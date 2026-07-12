@@ -1,0 +1,52 @@
+{% extends "admin_base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block title %}Calendar — Admin{% endblock %}
+{% block admin_title %}Calendar{% endblock %}
+
+{% block admin_body %}
+  <div class="resource-toolbar">
+    <a class="icon-button" href="{{ url_for('admin_calendar', start=prev_start) }}" aria-label="Previous week">{{ icon('chevron-left') }}</a>
+    <strong>{{ window_label }}</strong>
+    <a class="icon-button" href="{{ url_for('admin_calendar', start=next_start) }}" aria-label="Next week">{{ icon('chevron-right') }}</a>
+    <a class="button secondary" href="{{ url_for('admin_calendar') }}">This week</a>
+  </div>
+
+  <div class="resource-wrap">
+    <table class="resource-table">
+      <thead>
+        <tr>
+          <th class="resource-kayak">Kayak</th>
+          {% for day in days %}
+            <th {% if day == today %}class="is-today"{% endif %}>
+              {{ day.strftime('%a') }}<br>{{ day.strftime('%d %b') }}
+            </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for kayak in kayaks %}
+          <tr class="{% if kayak.status == 'maintenance' %}row-maintenance{% endif %}">
+            <td class="resource-kayak">
+              {{ kayak.name }}
+              <span>Rs {{ kayak.price_per_day }}/day{% if kayak.status == 'maintenance' %} · in maintenance{% endif %}</span>
+            </td>
+            {% for day in days %}
+              {% set booking = grid.get((kayak.id, day.isoformat())) %}
+              <td class="resource-cell">
+                {% if booking %}
+                  <a class="cell-booking status-{{ booking.status }}" href="{{ url_for('admin_booking_detail', booking_id=booking.id) }}" title="{{ booking.customer_name }} ({{ booking.status.replace('_', ' ') }})">
+                    {{ booking.customer_name }}
+                  </a>
+                {% elif kayak.status == 'active' and day >= today %}
+                  <a class="cell-book" href="{{ url_for('admin_new_booking', kayak_id=kayak.id, date=day.isoformat()) }}" aria-label="Book {{ kayak.name }} on {{ day.strftime('%d %b') }}">+</a>
+                {% endif %}
+              </td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="admin-muted" style="margin-top: 0.75rem;">Tap an empty cell to create a booking for that kayak and day. Hatched rows are in maintenance and take no new bookings.</p>
+{% endblock %}

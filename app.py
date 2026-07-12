@@ -1043,7 +1043,10 @@ def admin_checkin_booking(booking_id):
 def admin_new_booking():
     db = get_db()
     kayaks = db.execute("SELECT * FROM kayaks WHERE status = 'active' ORDER BY id").fetchall()
-    form_values = {}
+    form_values = {
+        "kayak_id": request.args.get("kayak_id", ""),
+        "booking_date": request.args.get("date", ""),
+    }
     form_errors = {}
 
     if request.method == "POST":
@@ -1553,6 +1556,47 @@ def admin_damage_resolve(report_id):
 
 
 @admin_required
+def admin_calendar():
+    db = get_db()
+    try:
+        start = parse_booking_date(request.args.get("start", local_today().isoformat()))
+    except ValueError:
+        start = local_today()
+    days = [start + timedelta(days=offset) for offset in range(7)]
+    end = days[-1]
+
+    kayaks = db.execute("SELECT * FROM kayaks WHERE status != 'retired' ORDER BY id").fetchall()
+    rows = db.execute(
+        """
+        SELECT bookings.*, kayaks.name AS kayak_name
+        FROM bookings JOIN kayaks ON kayaks.id = bookings.kayak_id
+        WHERE bookings.status IN ('confirmed', 'on_water', 'returned')
+          AND bookings.start_date <= ? AND bookings.end_date >= ?
+        """,
+        (end.isoformat(), start.isoformat()),
+    ).fetchall()
+
+    grid = {}
+    for booking in rows:
+        b_start = parse_booking_date(booking["start_date"])
+        b_end = parse_booking_date(booking["end_date"])
+        for day in days:
+            if b_start <= day <= b_end:
+                grid[(booking["kayak_id"], day.isoformat())] = booking
+
+    return render_template(
+        "admin_calendar.html",
+        kayaks=kayaks,
+        days=days,
+        grid=grid,
+        today=local_today(),
+        prev_start=(start - timedelta(days=7)).isoformat(),
+        next_start=(start + timedelta(days=7)).isoformat(),
+        window_label=f"{start.strftime('%d %b')} – {end.strftime('%d %b %Y')}",
+    )
+
+
+@admin_required
 def admin_audit():
     db = get_db()
     entries = db.execute(
@@ -1620,6 +1664,7 @@ def create_app(config_overrides=None):
     app.add_url_rule("/admin", "admin", admin)
     app.add_url_rule("/admin/today", "admin_today", admin_today)
     app.add_url_rule("/admin/bookings/new", "admin_new_booking", admin_new_booking, methods=["GET", "POST"])
+    app.add_url_rule("/admin/calendar", "admin_calendar", admin_calendar)
     app.add_url_rule("/admin/fleet", "admin_fleet", admin_fleet)
     app.add_url_rule("/admin/fleet/new", "admin_kayak_new", admin_kayak_save, methods=["POST"])
     app.add_url_rule("/admin/fleet/<int:kayak_id>/save", "admin_kayak_save", admin_kayak_save, methods=["POST"])

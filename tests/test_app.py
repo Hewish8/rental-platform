@@ -495,6 +495,18 @@ def test_maintenance_log_and_today_reminder(app, admin_client):
     assert b"Maintenance due" in page.data
 
 
+def test_resource_calendar(app, client, admin_client):
+    client.post("/book", data=booking_form())
+    page = admin_client.get(f"/admin/calendar?start={FUTURE}")
+    assert page.status_code == 200
+    assert b"Jane Visitor" in page.data
+    # Empty-cell link prefills the new-booking form
+    form_page = admin_client.get(f"/admin/bookings/new?kayak_id=2&date={FUTURE}")
+    assert f'value="{FUTURE}"'.encode() in form_page.data
+    # Garbage start falls back to today instead of erroring
+    assert admin_client.get("/admin/calendar?start=nonsense").status_code == 200
+
+
 # --- CSRF ------------------------------------------------------------------
 
 
