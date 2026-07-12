@@ -797,6 +797,23 @@ def test_login_rate_limit(app, client):
     app_module._LOGIN_ATTEMPTS.clear()
 
 
+def test_seo_meta_and_favicon(client):
+    page = client.get("/")
+    assert b'name="description"' in page.data
+    assert b'property="og:title"' in page.data
+    assert b'rel="icon"' in page.data
+    # Admin pages are noindexed
+    login = client.get("/admin/login")
+    assert b'name="robots" content="noindex"' not in login.data  # login extends base, not admin_base
+
+
+def test_friendly_404(client):
+    response = client.get("/nonexistent-page")
+    assert response.status_code == 404
+    assert b"drifted off with the tide" in response.data
+    assert b"Back to the site" in response.data
+
+
 # --- CSRF ------------------------------------------------------------------
 
 

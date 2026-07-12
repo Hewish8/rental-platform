@@ -2243,6 +2243,20 @@ def create_app(config_overrides=None):
     app.before_request(load_logged_in_user)
     app.teardown_appcontext(close_db)
 
+    @app.errorhandler(404)
+    def not_found(_error):
+        return render_template(
+            "error.html", code=404, title="Page not found",
+            message="That page drifted off with the tide. The homepage has everything you need.",
+        ), 404
+
+    @app.errorhandler(500)
+    def server_error(_error):
+        return render_template(
+            "error.html", code=500, title="Something went wrong",
+            message="Our mistake, not yours - nothing was charged. Please try again in a moment.",
+        ), 500
+
     app.add_url_rule("/", "index", index)
     app.add_url_rule("/assets/<path:filename>", "assets", assets)
     app.add_url_rule("/api/availability", "availability", availability)

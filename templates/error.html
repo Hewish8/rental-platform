@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block title %}{{ title }} — Mahebourg Kayak{% endblock %}
+
+{% block body_class %}plain-page{% endblock %}
+
+{% block body %}
+  <main class="success-page">
+    <section class="confirmation-panel">
+      <p class="eyebrow">{{ code }}</p>
+      <h1>{{ title }}</h1>
+      <p>{{ message }}</p>
+      <div class="actions confirm-actions">
+        <a class="button primary" href="{{ url_for('index') }}">{{ icon('arrow-left') }}Back to the site</a>
+      </div>
+    </section>
+  </main>
+{% endblock %}
