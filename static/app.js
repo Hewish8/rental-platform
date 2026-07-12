@@ -365,7 +365,8 @@ function setStep(step) {
     dot.classList.toggle("is-active", Number(dot.dataset.step) <= step);
   });
   if (inReview) {
-    stepReview.querySelector("button")?.focus();
+    stepReview.scrollIntoView({ behavior: "smooth", block: "center" });
+    stepReview.querySelector("button")?.focus({ preventScroll: true });
   }
 }
 
@@ -410,6 +411,15 @@ if (reviewButton && stepDetails && stepReview) {
 
   backToDetails.addEventListener("click", () => setStep(1));
 }
+
+// One click only: disable the submit button once the booking is on its way.
+document.querySelector(".booking-form")?.addEventListener("submit", (event) => {
+  const button = event.submitter;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Booking…";
+  }
+});
 
 
 // Copy-to-clipboard chips (confirmation page reference)

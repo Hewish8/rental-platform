@@ -678,11 +678,14 @@ def csrf_app(tmp_path):
     )
 
 
-def test_post_without_csrf_token_rejected(csrf_app):
+def test_post_without_csrf_token_redirects_with_message(csrf_app):
     client = csrf_app.test_client()
     response = client.post("/book", data=booking_form())
-    assert response.status_code == 400
-    assert b"CSRF" in response.data
+    assert response.status_code == 302
+    followed = client.post("/book", data=booking_form(), follow_redirects=True)
+    assert b"had expired" in followed.data
+    # Nothing was saved either time
+    assert db_rows(csrf_app, "SELECT COUNT(*) FROM bookings")[0][0] == 0
 
 
 def test_post_with_csrf_token_accepted(csrf_app):

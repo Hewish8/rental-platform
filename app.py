@@ -894,7 +894,13 @@ def check_csrf():
     token = session.get("csrf_token", "")
     provided = request.form.get("_csrf", "")
     if not token or not secrets.compare_digest(provided, token):
-        abort(400, description="Invalid or missing CSRF token. Please reload the page and try again.")
+        # Stale or missing session (old tab, cleared cookies): never show a raw
+        # error page — explain and send them back to a fresh form.
+        flash("That page had expired, so nothing was saved. Please try again.", "error")
+        referrer = request.referrer or ""
+        if referrer.startswith(request.host_url):
+            return redirect(referrer)
+        return redirect(url_for("admin_login") if request.path.startswith("/admin") else url_for("index"))
 
 
 def load_logged_in_user():
