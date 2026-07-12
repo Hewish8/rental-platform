@@ -1,0 +1,70 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Promo codes — Admin{% endblock %}
+{% block admin_title %}Promo codes{% endblock %}
+
+{% block admin_body %}
+  <p><a class="back-link" href="{{ url_for('admin_more') }}">&larr; More</a></p>
+
+  <div class="detail-grid">
+    <section class="booking-table-wrap">
+      <table class="booking-table">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Discount</th>
+            <th>Valid</th>
+            <th>Uses</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for promo in promos %}
+            <tr>
+              <td><strong class="mono">{{ promo.code }}</strong></td>
+              <td>{% if promo.kind == 'percent' %}{{ promo.value }}%{% else %}Rs {{ promo.value }}{% endif %}</td>
+              <td>{{ promo.valid_from or '…' }} → {{ promo.valid_to or '…' }}</td>
+              <td>{{ promo.uses }}{% if promo.max_uses %} / {{ promo.max_uses }}{% endif %}</td>
+              <td>
+                {% if promo.active %}
+                  <span class="pay-chip paid">Active</span>
+                {% else %}
+                  <span class="status-chip status-returned">Disabled</span>
+                {% endif %}
+              </td>
+              <td>
+                <form method="post" action="{{ url_for('admin_promo_toggle', promo_id=promo.id) }}">
+                  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                  <button class="button resend" type="submit">{{ 'Disable' if promo.active else 'Enable' }}</button>
+                </form>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6">No promo codes yet. Print one on flyers for hotel desks — it doubles as source tracking.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="admin-tool">
+      <p class="eyebrow">New code</p>
+      <h2>Create a promo</h2>
+      <form method="post" action="{{ url_for('admin_promo_create') }}" class="edit-form">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <label>Code <input required name="code" placeholder="HOTEL10" style="text-transform: uppercase;"></label>
+        <label>Type
+          <select name="kind">
+            <option value="percent">% off</option>
+            <option value="fixed">Rs off</option>
+          </select>
+        </label>
+        <label>Value <input required name="value" type="number" min="1" placeholder="10"></label>
+        <label>Max uses (optional) <input name="max_uses" type="number" min="1"></label>
+        <label>Valid from <input name="valid_from" type="date"></label>
+        <label>Valid to <input name="valid_to" type="date"></label>
+        <button class="button primary" type="submit">Create code</button>
+      </form>
+    </section>
+  </div>
+{% endblock %}

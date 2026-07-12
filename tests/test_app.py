@@ -541,6 +541,57 @@ def test_reports_page(app, client, admin_client):
     assert admin_client.get("/admin/reports?month=garbage").status_code == 200
 
 
+# --- Promo codes -----------------------------------------------------------
+
+
+def make_promo(admin_client, **overrides):
+    data = {"code": "HOTEL10", "kind": "percent", "value": "10"}
+    data.update(overrides)
+    return admin_client.post("/admin/promos/new", data=data)
+
+
+def test_promo_applies_discount(app, client, admin_client):
+    make_promo(admin_client)
+    response = client.post("/book", data=booking_form(promo_code="hotel10"))
+    assert response.status_code == 302
+    row = db_rows(app, "SELECT total_price, discount, promo_code FROM bookings")[0]
+    assert row["promo_code"] == "HOTEL10"
+    assert row["discount"] == 120
+    assert row["total_price"] == 1080
+    assert db_rows(app, "SELECT uses FROM promo_codes")[0][0] == 1
+
+
+def test_invalid_promo_rejected_but_form_kept(app, client, admin_client):
+    response = client.post("/book", data=booking_form(promo_code="NOPE"))
+    assert response.status_code == 400
+    assert b"not valid" in response.data
+    assert db_rows(app, "SELECT COUNT(*) FROM bookings")[0][0] == 0
+
+
+def test_promo_use_limit_and_toggle(app, client, admin_client):
+    make_promo(admin_client, code="ONCE", max_uses="1")
+    client.post("/book", data=booking_form(promo_code="ONCE"))
+    second = client.post("/book", data=booking_form(
+        promo_code="ONCE", booking_date=(date.today() + timedelta(days=15)).isoformat()
+    ))
+    assert second.status_code == 400
+    assert b"fully used" in second.data
+
+    make_promo(admin_client, code="PAUSED", value="20")
+    promo_id = db_rows(app, "SELECT id FROM promo_codes WHERE code = 'PAUSED'")[0][0]
+    admin_client.post(f"/admin/promos/{promo_id}/toggle")
+    check = client.get("/api/promo?code=PAUSED").get_json()
+    assert check["valid"] is False
+
+
+def test_promo_api(client, admin_client):
+    make_promo(admin_client, code="FIXED500", kind="fixed", value="500")
+    data = client.get("/api/promo?code=FIXED500").get_json()
+    assert data == {"valid": True, "kind": "fixed", "value": 500, "code": "FIXED500"}
+    data = client.get("/api/promo?code=unknown").get_json()
+    assert data["valid"] is False
+
+
 # --- CSRF ------------------------------------------------------------------
 
 

@@ -63,17 +63,32 @@ function updateSelectionLine() {
   calendarSelection.innerHTML = `<strong>${prettyDate(selectedDate)}</strong> · ${name}<strong>${price}</strong>`;
 }
 
+let activePromo = null;
+
+function discountedTotal(rate) {
+  if (!activePromo) {
+    return rate;
+  }
+  const discount = activePromo.kind === "percent"
+    ? Math.min(rate, Math.round((rate * activePromo.value) / 100))
+    : Math.min(rate, activePromo.value);
+  return rate - discount;
+}
+
 function updateBookingSummary() {
   const card = currentKayakCard();
   const rate = card ? Number(card.dataset.kayakPrice) : 0;
+  const total = discountedTotal(rate);
   if (bookingBarPrice) {
-    bookingBarPrice.textContent = `Rs ${rate}`;
+    bookingBarPrice.textContent = `Rs ${total}`;
   }
   if (selectedDate) {
     if (priceSummary) {
       priceSummary.hidden = false;
-      summaryLine.textContent = `Rs ${rate} × 1 day`;
-      summaryTotal.textContent = `Rs ${rate}`;
+      summaryLine.textContent = activePromo
+        ? `Rs ${rate} × 1 day − ${activePromo.code}`
+        : `Rs ${rate} × 1 day`;
+      summaryTotal.textContent = `Rs ${total}`;
     }
     if (bookingBarMeta) {
       bookingBarMeta.textContent = prettyDate(selectedDate);
@@ -357,7 +372,7 @@ function setStep(step) {
 function fillReview() {
   const form = document.querySelector(".booking-form");
   const card = currentKayakCard();
-  const rate = card ? Number(card.dataset.kayakPrice) : 0;
+  const rate = card ? discountedTotal(Number(card.dataset.kayakPrice)) : 0;
   document.querySelector("#reviewKayak").textContent = card ? card.dataset.kayakName : "";
   document.querySelector("#reviewDate").textContent = selectedDate ? prettyDate(selectedDate) : "";
   document.querySelector("#reviewName").textContent = form.customer_name.value.trim();
@@ -424,4 +439,39 @@ document.querySelectorAll(".date-chip").forEach((chip) => {
     updateSelectionLine();
     loadAvailability();
   });
+});
+
+
+// Promo code live check
+const promoInput = document.querySelector("#promoCode");
+const promoStatus = document.querySelector("#promoStatus");
+
+promoInput?.addEventListener("blur", async () => {
+  const code = promoInput.value.trim();
+  if (!code) {
+    activePromo = null;
+    promoStatus.hidden = true;
+    updateBookingSummary();
+    return;
+  }
+  try {
+    const response = await fetch(`/api/promo?code=${encodeURIComponent(code)}`);
+    const data = await response.json();
+    promoStatus.hidden = false;
+    if (data.valid) {
+      activePromo = data;
+      promoStatus.textContent = data.kind === "percent"
+        ? `✓ ${data.code}: ${data.value}% off`
+        : `✓ ${data.code}: Rs ${data.value} off`;
+      promoStatus.className = "promo-status is-valid";
+    } else {
+      activePromo = null;
+      promoStatus.textContent = data.error;
+      promoStatus.className = "promo-status is-invalid";
+    }
+  } catch (error) {
+    activePromo = null;
+    promoStatus.hidden = true;
+  }
+  updateBookingSummary();
 });

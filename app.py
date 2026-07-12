@@ -220,6 +220,22 @@ def init_db(database, owner_email=None, owner_password=None):
         )
         db.execute(
             """
+            CREATE TABLE IF NOT EXISTS promo_codes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT NOT NULL UNIQUE,
+                kind TEXT NOT NULL DEFAULT 'percent',
+                value INTEGER NOT NULL,
+                valid_from TEXT,
+                valid_to TEXT,
+                max_uses INTEGER,
+                uses INTEGER NOT NULL DEFAULT 0,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        db.execute(
+            """
             CREATE TABLE IF NOT EXISTS customer_notes (
                 identity TEXT PRIMARY KEY,
                 note TEXT NOT NULL DEFAULT '',
@@ -312,6 +328,8 @@ def migrate_db(db):
         "checked_out_at": "ALTER TABLE bookings ADD COLUMN checked_out_at TEXT",
         "checked_in_at": "ALTER TABLE bookings ADD COLUMN checked_in_at TEXT",
         "cancelled_reason": "ALTER TABLE bookings ADD COLUMN cancelled_reason TEXT",
+        "promo_code": "ALTER TABLE bookings ADD COLUMN promo_code TEXT",
+        "discount": "ALTER TABLE bookings ADD COLUMN discount INTEGER NOT NULL DEFAULT 0",
     }
     for column, statement in migrations.items():
         if column not in columns:
@@ -623,12 +641,42 @@ def validate_booking_form(db, form):
     if len(values["notes"]) > 2000:
         errors["notes"] = "Please keep your message under 2000 characters."
 
+    values["promo_code"] = form.get("promo_code", "").strip().upper()
+
     return values, errors, kayak, booking_date
 
 
-def create_booking(db, kayak, start_date, end_date, values, source, party_size=1):
+def find_valid_promo(db, code):
+    """Returns (promo_row, error_message)."""
+    code = (code or "").strip().upper()
+    if not code:
+        return None, None
+    promo = db.execute("SELECT * FROM promo_codes WHERE code = ?", (code,)).fetchone()
+    today_iso = local_today().isoformat()
+    if promo is None or not promo["active"]:
+        return None, "That promo code is not valid."
+    if promo["valid_from"] and today_iso < promo["valid_from"]:
+        return None, "That promo code is not active yet."
+    if promo["valid_to"] and today_iso > promo["valid_to"]:
+        return None, "That promo code has expired."
+    if promo["max_uses"] and promo["uses"] >= promo["max_uses"]:
+        return None, "That promo code has been fully used."
+    return promo, None
+
+
+def promo_discount(promo, total):
+    if promo is None:
+        return 0
+    if promo["kind"] == "percent":
+        return min(total, round(total * promo["value"] / 100))
+    return min(total, promo["value"])
+
+
+def create_booking(db, kayak, start_date, end_date, values, source, party_size=1, promo=None):
     """Atomically create a booking. Returns (booking_id, booking) — id is None
     if the dates were taken between validation and insert."""
+    base_total = count_days(start_date, end_date) * kayak["price_per_day"]
+    discount = promo_discount(promo, base_total)
     booking = {
         "kayak_id": kayak["id"],
         "booking_reference": generate_booking_reference(),
@@ -638,7 +686,9 @@ def create_booking(db, kayak, start_date, end_date, values, source, party_size=1
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
         "notes": values.get("notes", ""),
-        "total_price": count_days(start_date, end_date) * kayak["price_per_day"],
+        "total_price": base_total - discount,
+        "discount": discount,
+        "promo_code": promo["code"] if promo else None,
     }
     for _attempt in range(2):
         try:
@@ -650,8 +700,9 @@ def create_booking(db, kayak, start_date, end_date, values, source, party_size=1
                 """
                 INSERT INTO bookings
                     (kayak_id, booking_reference, customer_name, customer_email, customer_phone,
-                     start_date, end_date, notes, total_price, source, party_size, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     start_date, end_date, notes, total_price, discount, promo_code,
+                     source, party_size, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     booking["kayak_id"],
@@ -663,11 +714,15 @@ def create_booking(db, kayak, start_date, end_date, values, source, party_size=1
                     booking["end_date"],
                     booking["notes"],
                     booking["total_price"],
+                    booking["discount"],
+                    booking["promo_code"],
                     source,
                     party_size,
                     datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 ),
             )
+            if promo is not None:
+                db.execute("UPDATE promo_codes SET uses = uses + 1 WHERE id = ?", (promo["id"],))
             record_audit(db, "created", "booking", cursor.lastrowid, f"{booking['booking_reference']} via {source}")
             db.commit()
             return cursor.lastrowid, booking
@@ -683,9 +738,20 @@ def conflict_suggestions(db, kayak, booking_date):
     return nearest_available_dates(db, kayak["id"], booking_date)
 
 
+def promo_check():
+    db = get_db()
+    promo, error = find_valid_promo(db, request.args.get("code", ""))
+    if error or promo is None:
+        return jsonify({"valid": False, "error": error or "Enter a promo code."}), 200
+    return jsonify({"valid": True, "kind": promo["kind"], "value": promo["value"], "code": promo["code"]})
+
+
 def book():
     db = get_db()
     values, errors, kayak, booking_date = validate_booking_form(db, request.form)
+    promo, promo_error = find_valid_promo(db, values.get("promo_code"))
+    if promo_error:
+        errors["promo_code"] = promo_error
     if errors:
         suggestions = None
         if "already booked" in errors.get("booking_date", ""):
@@ -695,7 +761,7 @@ def book():
     start_date = booking_date
     end_date = booking_date
 
-    booking_id, booking = create_booking(db, kayak, start_date, end_date, values, source="online")
+    booking_id, booking = create_booking(db, kayak, start_date, end_date, values, source="online", promo=promo)
     if booking_id is None:
         errors["booking_date"] = "That kayak was just booked on this date. Please pick another date."
         return render_index(values, errors, 409, conflict_suggestions(db, kayak, booking_date))
@@ -1688,6 +1754,67 @@ def admin_customer_note():
 
 
 @admin_required
+def admin_promos():
+    db = get_db()
+    promos = db.execute("SELECT * FROM promo_codes ORDER BY active DESC, id DESC").fetchall()
+    return render_template("admin_promos.html", promos=promos)
+
+
+@admin_required
+def admin_promo_create():
+    db = get_db()
+    code = request.form.get("code", "").strip().upper()
+    kind = request.form.get("kind", "percent")
+    if kind not in ("percent", "fixed"):
+        kind = "percent"
+    try:
+        value = int(request.form.get("value", ""))
+        if value <= 0 or (kind == "percent" and value > 100):
+            raise ValueError
+    except ValueError:
+        flash("Value must be a positive number (1-100 for percent).", "error")
+        return redirect(url_for("admin_promos"))
+    if not code or not code.replace("-", "").isalnum():
+        flash("Code must be letters and numbers.", "error")
+        return redirect(url_for("admin_promos"))
+    max_uses = None
+    if request.form.get("max_uses"):
+        try:
+            max_uses = max(1, int(request.form["max_uses"]))
+        except ValueError:
+            max_uses = None
+    valid_from = request.form.get("valid_from") or None
+    valid_to = request.form.get("valid_to") or None
+    try:
+        db.execute(
+            "INSERT INTO promo_codes (code, kind, value, valid_from, valid_to, max_uses, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (code, kind, value, valid_from, valid_to, max_uses,
+             datetime.now(timezone.utc).isoformat(timespec="seconds")),
+        )
+    except sqlite3.IntegrityError:
+        flash("That code already exists.", "error")
+        return redirect(url_for("admin_promos"))
+    record_audit(db, "created", "promo", code, f"{kind} {value}")
+    db.commit()
+    flash(f"Promo code {code} created.", "success")
+    return redirect(url_for("admin_promos"))
+
+
+@admin_required
+def admin_promo_toggle(promo_id):
+    db = get_db()
+    promo = db.execute("SELECT * FROM promo_codes WHERE id = ?", (promo_id,)).fetchone()
+    if promo is None:
+        return redirect(url_for("admin_promos"))
+    new_state = 0 if promo["active"] else 1
+    db.execute("UPDATE promo_codes SET active = ? WHERE id = ?", (new_state, promo_id))
+    record_audit(db, "enabled" if new_state else "disabled", "promo", promo["code"])
+    db.commit()
+    flash(f"{promo['code']} {'enabled' if new_state else 'disabled'}.", "success")
+    return redirect(url_for("admin_promos"))
+
+
+@admin_required
 def admin_reports():
     db = get_db()
     month = request.args.get("month", local_today().strftime("%Y-%m"))
@@ -1826,6 +1953,7 @@ def create_app(config_overrides=None):
     app.add_url_rule("/", "index", index)
     app.add_url_rule("/assets/<path:filename>", "assets", assets)
     app.add_url_rule("/api/availability", "availability", availability)
+    app.add_url_rule("/api/promo", "promo_check", promo_check)
     app.add_url_rule("/book", "book", book, methods=["POST"])
     app.add_url_rule("/booking/<reference>", "booking_success", booking_success)
     app.add_url_rule("/booking/<reference>/calendar.ics", "booking_ics", booking_ics)
@@ -1839,6 +1967,9 @@ def create_app(config_overrides=None):
     app.add_url_rule("/admin/customers", "admin_customers", admin_customers)
     app.add_url_rule("/admin/customers/note", "admin_customer_note", admin_customer_note, methods=["POST"])
     app.add_url_rule("/admin/reports", "admin_reports", admin_reports)
+    app.add_url_rule("/admin/promos", "admin_promos", admin_promos)
+    app.add_url_rule("/admin/promos/new", "admin_promo_create", admin_promo_create, methods=["POST"])
+    app.add_url_rule("/admin/promos/<int:promo_id>/toggle", "admin_promo_toggle", admin_promo_toggle, methods=["POST"])
     app.add_url_rule("/admin/fleet", "admin_fleet", admin_fleet)
     app.add_url_rule("/admin/fleet/new", "admin_kayak_new", admin_kayak_save, methods=["POST"])
     app.add_url_rule("/admin/fleet/<int:kayak_id>/save", "admin_kayak_save", admin_kayak_save, methods=["POST"])

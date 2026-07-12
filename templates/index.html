@@ -207,6 +207,13 @@
           Message
           <textarea name="notes" rows="4" placeholder="Preferred time, hotel, or WhatsApp number">{{ form_values.get('notes', '') }}</textarea>
         </label>
+        <label>
+          Promo code (optional)
+          <input name="promo_code" id="promoCode" value="{{ form_values.get('promo_code', '') }}" placeholder="e.g. HOTEL10" autocomplete="off"
+                 {% if form_errors.get('promo_code') %}aria-invalid="true" aria-describedby="error-promo-code"{% endif %}>
+          {% if form_errors.get('promo_code') %}<span class="field-error" id="error-promo-code">{{ form_errors['promo_code'] }}</span>{% endif %}
+          <span class="promo-status" id="promoStatus" hidden></span>
+        </label>
         <div class="price-summary" id="priceSummary" hidden>
           <span id="summaryLine">Rs 0 × 1 day</span>
           <strong id="summaryTotal">Rs 0</strong>

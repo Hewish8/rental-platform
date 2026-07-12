@@ -2439,3 +2439,17 @@ dd,
     grid-template-columns: 1fr;
   }
 }
+
+
+.promo-status {
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.promo-status.is-valid {
+  color: var(--color-success);
+}
+
+.promo-status.is-invalid {
+  color: var(--color-danger);
+}
