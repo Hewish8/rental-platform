@@ -603,6 +603,54 @@ def test_admin_walkup_range(app, admin_client):
     assert row["total_price"] == 2400
 
 
+# --- Manage my booking -------------------------------------------------------
+
+
+def get_reference(app):
+    return db_rows(app, "SELECT booking_reference FROM bookings")[0][0]
+
+
+def test_manage_lookup_requires_matching_email(app, client):
+    client.post("/book", data=booking_form())
+    reference = get_reference(app)
+    wrong = client.post("/manage", data={"reference": reference, "email": "attacker@evil.com"})
+    assert b"No booking found" in wrong.data
+    assert b"Jane Visitor" not in wrong.data
+    found = client.post("/manage", data={"reference": reference.lower(), "email": "JANE@example.com"})
+    assert b"Cancel this booking" in found.data
+
+
+def test_customer_can_cancel_future_booking(app, client):
+    client.post("/book", data=booking_form())
+    reference = get_reference(app)
+    response = client.post(
+        "/manage/cancel",
+        data={"reference": reference, "email": "jane@example.com"},
+        follow_redirects=True,
+    )
+    assert b"is cancelled" in response.data
+    row = db_rows(app, "SELECT status, cancelled_reason FROM bookings")[0]
+    assert row["status"] == "cancelled"
+    assert "customer online" in row["cancelled_reason"]
+    days = client.get(f"/api/availability?kayak_id=1&start={FUTURE}&days=1").get_json()
+    assert days[0]["available"] is True
+
+
+def test_customer_cannot_cancel_same_day_or_past(app, client, admin_client):
+    today_iso = date.today().isoformat()
+    client.post("/book", data=booking_form(booking_date=today_iso))
+    reference = get_reference(app)
+    page = client.post("/manage", data={"reference": reference, "email": "jane@example.com"})
+    assert b"no longer be cancelled online" in page.data
+    response = client.post(
+        "/manage/cancel",
+        data={"reference": reference, "email": "jane@example.com"},
+        follow_redirects=True,
+    )
+    assert b"no longer be cancelled online" in response.data
+    assert db_rows(app, "SELECT status FROM bookings")[0][0] == "confirmed"
+
+
 # --- Promo codes -----------------------------------------------------------
 
 

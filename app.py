@@ -813,6 +813,79 @@ def booking_success(reference):
     return render_template("booking_success.html", booking=booking, display_booking_date=display_booking_date)
 
 
+def find_booking_for_customer(db, reference, email):
+    """A booking is only shown when both the reference and email match."""
+    reference = (reference or "").strip().upper()
+    email = (email or "").strip().lower()
+    if not reference or not email:
+        return None
+    booking = db.execute(
+        """
+        SELECT bookings.*, kayaks.name AS kayak_name
+        FROM bookings JOIN kayaks ON kayaks.id = bookings.kayak_id
+        WHERE bookings.booking_reference = ?
+        """,
+        (reference,),
+    ).fetchone()
+    if booking is None or booking["customer_email"].strip().lower() != email:
+        return None
+    return booking
+
+
+def customer_can_cancel(booking):
+    return booking["status"] == "confirmed" and booking["start_date"] > local_today().isoformat()
+
+
+def manage_booking():
+    booking = None
+    cancellable = False
+    if request.method == "POST":
+        booking = find_booking_for_customer(
+            get_db(), request.form.get("reference"), request.form.get("email")
+        )
+        if booking is None:
+            flash("No booking found with that reference and email. Check both and try again.", "error")
+        else:
+            cancellable = customer_can_cancel(booking)
+    return render_template(
+        "manage.html", booking=booking, cancellable=cancellable, display_booking_date=display_booking_date
+    )
+
+
+def manage_cancel():
+    db = get_db()
+    booking = find_booking_for_customer(db, request.form.get("reference"), request.form.get("email"))
+    if booking is None:
+        flash("No booking found with that reference and email.", "error")
+        return redirect(url_for("manage_booking"))
+    if not customer_can_cancel(booking):
+        flash("This booking can no longer be cancelled online. Message us on WhatsApp and we'll help.", "warning")
+        return redirect(url_for("manage_booking"))
+    db.execute(
+        "UPDATE bookings SET status = 'cancelled', cancelled_reason = ? WHERE id = ?",
+        ("Cancelled by the customer online", booking["id"]),
+    )
+    record_audit(db, "cancelled", "booking", booking["id"], f"{booking['booking_reference']}: by customer online")
+    db.commit()
+
+    cfg = current_app.config
+    if smtp_is_configured(cfg):
+        try:
+            send_email(
+                cfg,
+                cfg["OWNER_EMAIL"],
+                f"Booking cancelled by customer: {booking['booking_reference']}",
+                f"{booking['customer_name']} cancelled {booking['booking_reference']} "
+                f"({booking['kayak_name']}, {display_booking_date(booking)}) online. The dates are free again.",
+                booking["customer_email"],
+            )
+        except Exception:
+            pass
+
+    flash(f"Booking {booking['booking_reference']} is cancelled. We hope to see you another day!", "success")
+    return redirect(url_for("manage_booking"))
+
+
 def booking_ics(reference):
     db = get_db()
     booking = db.execute(
@@ -2101,6 +2174,8 @@ def create_app(config_overrides=None):
     app.add_url_rule("/book", "book", book, methods=["POST"])
     app.add_url_rule("/booking/<reference>", "booking_success", booking_success)
     app.add_url_rule("/booking/<reference>/calendar.ics", "booking_ics", booking_ics)
+    app.add_url_rule("/manage", "manage_booking", manage_booking, methods=["GET", "POST"])
+    app.add_url_rule("/manage/cancel", "manage_cancel", manage_cancel, methods=["POST"])
     app.add_url_rule("/admin/login", "admin_login", admin_login, methods=["GET", "POST"])
     app.add_url_rule("/admin/logout", "admin_logout", admin_logout, methods=["POST"])
     app.add_url_rule("/admin", "admin", admin)

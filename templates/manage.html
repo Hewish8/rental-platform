@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block title %}Manage my booking — Mahebourg Kayak{% endblock %}
+
+{% block body_class %}plain-page{% endblock %}
+
+{% block body %}
+  <main class="success-page">
+    {% include "_flash.html" %}
+
+    <section class="confirmation-panel">
+      <p class="eyebrow">Self service</p>
+      <h1>Manage my booking</h1>
+
+      {% if not booking %}
+        <p>Enter your booking reference (like <span class="mono">MLK-A1B2C3D4E5</span>) and the email you booked with.</p>
+        <form method="post" action="{{ url_for('manage_booking') }}" class="manage-form">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <label>
+            Booking reference
+            <input required name="reference" placeholder="MLK-…" value="{{ request.form.get('reference', '') }}" style="text-transform: uppercase;">
+          </label>
+          <label>
+            Email
+            <input required name="email" type="email" placeholder="you@example.com">
+          </label>
+          <button class="button primary" type="submit">Find my booking</button>
+        </form>
+      {% else %}
+        <div class="reference-chip">
+          <span>Reference</span>
+          <strong>{{ booking.booking_reference }}</strong>
+        </div>
+
+        <dl class="booking-details ticket">
+          <div><dt>Kayak</dt><dd>{{ booking.kayak_name }}</dd></div>
+          <div><dt>Dates</dt><dd>{{ display_booking_date(booking) }}</dd></div>
+          <div><dt>Status</dt><dd><span class="status-chip status-{{ booking.status }}">{{ booking.status.replace('_', ' ') }}</span></dd></div>
+          <div class="ticket-total"><dt>Total — pay on arrival</dt><dd>Rs {{ booking.total_price }}</dd></div>
+        </dl>
+
+        {% if cancellable %}
+          <form method="post" action="{{ url_for('manage_cancel') }}" onsubmit="return confirm('Cancel this booking? This cannot be undone online.')" class="manage-cancel">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <input type="hidden" name="reference" value="{{ booking.booking_reference }}">
+            <input type="hidden" name="email" value="{{ booking.customer_email }}">
+            <button class="button danger" type="submit">Cancel this booking</button>
+            <p class="admin-muted">Free cancellation until the day before your rental.</p>
+          </form>
+        {% elif booking.status == 'cancelled' %}
+          <p class="email-note">This booking is cancelled. The dates are free again — you're welcome to book a new one.</p>
+        {% else %}
+          <p class="email-note">This booking can no longer be cancelled online. <a href="{{ site.whatsapp_link }}?text=Hi%2C%20about%20my%20booking%20{{ booking.booking_reference }}">{{ icon('whatsapp', 15) }} Message us on WhatsApp</a> and we'll sort it out.</p>
+        {% endif %}
+      {% endif %}
+
+      <div class="actions">
+        <a class="back-link" href="{{ url_for('index') }}">{{ icon('arrow-left', 15) }}Back to the site</a>
+      </div>
+    </section>
+  </main>
+{% endblock %}
+
+{% block scripts %}
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}
