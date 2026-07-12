@@ -471,38 +471,61 @@ def send_email(cfg, recipient, subject, body, reply_to=None):
         smtp.send_message(message)
 
 
-def send_booking_emails(cfg, booking, kayak):
+def send_booking_emails(cfg, booking, kayak, site=None, base_url=""):
+    site = site or dict(DEFAULT_SETTINGS, whatsapp_link="")
     reference = booking["booking_reference"]
+    newline = chr(10)
+    manage_line = f"Manage or cancel your booking: {base_url}manage{newline}" if base_url else ""
+    whatsapp_line = (
+        f"Questions? WhatsApp us: {site['whatsapp_number']}{newline}" if site.get("whatsapp_number") else ""
+    )
+
     owner_subject = f"New kayak booking {reference}: {kayak['name']}"
-    customer_subject = f"Your Mahebourg Lagoon kayak booking {reference}"
     owner_body = f"""
 New booking received
 
 Reference: {reference}
 Kayak: {kayak['name']}
-Customer: {booking['customer_name']} <{booking['customer_email']}>
+Customer: {booking['customer_name']} <{booking['customer_email'] or 'no email'}>
 Phone/WhatsApp: {booking['customer_phone'] or 'Not provided'}
-Booking date: {display_booking_date(booking)}
+Dates: {display_booking_date(booking)}
 Total: Rs {booking['total_price']}
 Notes: {booking['notes'] or 'None'}
 """.strip()
+
+    customer_subject = f"You're booked! {kayak['name']} — {display_booking_date(booking)} ({reference})"
     customer_body = f"""
 Hi {booking['customer_name']},
 
-Thank you for booking {kayak['name']} in Mahebourg Lagoon.
+You're booked! Here is everything you need for your paddle on Mahebourg Lagoon.
 
-Reference: {reference}
-Booking date: {display_booking_date(booking)}
-Total: Rs {booking['total_price']}
-Status: Confirmed
+  Kayak:     {kayak['name']}
+  Dates:     {display_booking_date(booking)}
+  Reference: {reference}
+  Total:     Rs {booking['total_price']} — pay on arrival, cash or card
 
-Please keep this email. The owner will contact you directly before the rental. Online payment will be added soon; for now payment is arranged directly.
+WHERE TO FIND US
+  {site['meeting_point']}
+  {site['hours_text']}
+  Please arrive 15 minutes early for your briefing.
+
+WHAT'S INCLUDED
+  Life jackets and a dry bag for your phone and valuables.
+  Bring sunscreen, a hat, water, and shoes that can get wet.
+
+NEED TO CHANGE PLANS?
+  Free cancellation until the day before your rental.
+  {manage_line}  {whatsapp_line}
+If the weather turns, we'll contact you to rebook for free.
+
+See you on the water!
+Mahebourg Lagoon Kayak Rentals
 """.strip()
 
-    for recipient, subject, body, reply_to in (
-        (cfg["OWNER_EMAIL"], owner_subject, owner_body, booking["customer_email"]),
-        (booking["customer_email"], customer_subject, customer_body, cfg["OWNER_EMAIL"]),
-    ):
+    recipients = [(cfg["OWNER_EMAIL"], owner_subject, owner_body, booking["customer_email"] or None)]
+    if booking["customer_email"]:
+        recipients.append((booking["customer_email"], customer_subject, customer_body, cfg["OWNER_EMAIL"]))
+    for recipient, subject, body, reply_to in recipients:
         send_email(cfg, recipient, subject, body, reply_to)
 
 
@@ -517,10 +540,10 @@ _EMAIL_CONFIG_KEYS = (
 )
 
 
-def deliver_booking_emails(cfg, database, booking_id, booking, kayak):
+def deliver_booking_emails(cfg, database, booking_id, booking, kayak, site=None, base_url=""):
     """Send both booking emails and record the outcome. Safe to run in a thread."""
     try:
-        send_booking_emails(cfg, booking, kayak)
+        send_booking_emails(cfg, booking, kayak, site, base_url)
         status, error = "sent", None
     except Exception as exc:
         status, error = "failed", str(exc)
@@ -536,14 +559,16 @@ def queue_booking_emails(booking_id, booking, kayak):
     """Send booking emails without blocking the request."""
     cfg = {key: current_app.config[key] for key in _EMAIL_CONFIG_KEYS}
     database = current_app.config["DATABASE"]
+    site = get_settings(get_db())
+    base_url = request.url_root if request else ""
     if current_app.config.get("TESTING") or not smtp_is_configured(cfg):
         # Synchronous: deterministic in tests, and instantly marks 'failed'
         # when SMTP is not configured instead of leaving 'pending' forever.
-        deliver_booking_emails(cfg, database, booking_id, booking, kayak)
+        deliver_booking_emails(cfg, database, booking_id, booking, kayak, site, base_url)
         return
     threading.Thread(
         target=deliver_booking_emails,
-        args=(cfg, database, booking_id, dict(booking), dict(kayak)),
+        args=(cfg, database, booking_id, dict(booking), dict(kayak), dict(site), base_url),
         daemon=True,
     ).start()
 
@@ -1509,7 +1534,7 @@ def admin_resend_email(booking_id):
 
     # Synchronous on purpose: the admin clicked the button and wants a verdict.
     try:
-        send_booking_emails(cfg, booking, {"name": booking["kayak_name"]})
+        send_booking_emails(cfg, booking, {"name": booking["kayak_name"]}, get_settings(db), request.url_root)
         db.execute("UPDATE bookings SET email_status = 'sent', email_error = NULL WHERE id = ?", (booking_id,))
         record_audit(db, "resent-email", "booking", booking_id, booking["booking_reference"])
         db.commit()
