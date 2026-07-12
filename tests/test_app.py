@@ -21,6 +21,7 @@ def app(tmp_path):
             "OWNER_EMAIL": OWNER_EMAIL,
             "OWNER_PASSWORD": OWNER_PASSWORD,
             "CSRF_ENABLED": False,  # re-enabled in the dedicated CSRF tests
+            "UPLOAD_DIR": tmp_path / "uploads",
         }
     )
 
@@ -424,6 +425,74 @@ def test_walkup_conflict_rejected(app, client, admin_client):
 
 def test_walkup_requires_login(client):
     assert client.get("/admin/bookings/new").status_code == 302
+
+
+def test_fleet_page_and_kayak_crud(app, admin_client, client):
+    page = admin_client.get("/admin/fleet")
+    assert page.status_code == 200
+    assert b"Lagoon Explorer" in page.data
+
+    # Add a kayak
+    admin_client.post("/admin/fleet/new", data={
+        "name": "Reef Runner", "tagline": "Test kayak", "capacity": "1 adult", "price_per_day": "999",
+    })
+    assert db_rows(app, "SELECT COUNT(*) FROM kayaks")[0][0] == 4
+    public = client.get("/")
+    assert b"Reef Runner" in public.data
+
+    # Edit price
+    kayak_id = db_rows(app, "SELECT id FROM kayaks WHERE name = 'Reef Runner'")[0][0]
+    admin_client.post(f"/admin/fleet/{kayak_id}/save", data={
+        "name": "Reef Runner", "tagline": "Test kayak", "capacity": "1 adult", "price_per_day": "1500",
+    })
+    assert db_rows(app, "SELECT price_per_day FROM kayaks WHERE id = ?", (kayak_id,))[0][0] == 1500
+
+    # Retire hides from public site and availability API
+    admin_client.post(f"/admin/fleet/{kayak_id}/status", data={"status": "retired"})
+    public = client.get("/")
+    assert b"Reef Runner" not in public.data
+    assert client.get(f"/api/availability?kayak_id={kayak_id}").status_code == 404
+
+
+def test_unusable_damage_blocks_bookings(app, admin_client, client):
+    admin_client.post("/admin/fleet/1/damage", data={"description": "Cracked hull", "severity": "unusable"})
+    row = db_rows(app, "SELECT status FROM kayaks WHERE id = 1")[0]
+    assert row["status"] == "maintenance"
+    # Public booking for that kayak is rejected
+    response = client.post("/book", data=booking_form(kayak_id="1"))
+    assert response.status_code == 400
+    # Resolving damage does not auto-reactivate (owner decides)
+    report_id = db_rows(app, "SELECT id FROM damage_reports")[0][0]
+    admin_client.post(f"/admin/damage/{report_id}/resolve")
+    assert db_rows(app, "SELECT status FROM damage_reports WHERE id = ?", (report_id,))[0][0] == "resolved"
+
+
+def test_kayak_photo_upload_validation(app, admin_client):
+    import io as _io
+    # Wrong extension rejected
+    admin_client.post("/admin/fleet/1/save", data={
+        "name": "Lagoon Explorer", "tagline": "x", "capacity": "1 adult", "price_per_day": "1200",
+        "photo": (_io.BytesIO(b"MZ fake exe"), "malware.exe"),
+    }, content_type="multipart/form-data")
+    assert db_rows(app, "SELECT image_url FROM kayaks WHERE id = 1")[0][0] == "/assets/KayakTurquoise.jpg"
+
+    # Valid jpg accepted
+    admin_client.post("/admin/fleet/1/save", data={
+        "name": "Lagoon Explorer", "tagline": "x", "capacity": "1 adult", "price_per_day": "1200",
+        "photo": (_io.BytesIO(b"\xff\xd8\xff" + b"0" * 100), "new-photo.jpg"),
+    }, content_type="multipart/form-data")
+    url = db_rows(app, "SELECT image_url FROM kayaks WHERE id = 1")[0][0]
+    assert url.startswith("/assets/kayaks/") and url.endswith(".jpg")
+
+
+def test_maintenance_log_and_today_reminder(app, admin_client):
+    admin_client.post("/admin/fleet/1/maintenance", data={
+        "description": "Hull inspection", "cost": "500", "next_due": "2020-01-01",
+    })
+    rows = db_rows(app, "SELECT description, cost, next_due FROM maintenance_log")
+    assert rows[0]["description"] == "Hull inspection"
+    page = admin_client.get("/admin/today")
+    assert b"Maintenance due" in page.data
 
 
 # --- CSRF ------------------------------------------------------------------

@@ -26,6 +26,7 @@ from flask import (
     url_for,
 )
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -190,6 +191,35 @@ def init_db(database, owner_email=None, owner_password=None):
         )
         db.execute(
             """
+            CREATE TABLE IF NOT EXISTS maintenance_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kayak_id INTEGER NOT NULL,
+                description TEXT NOT NULL,
+                cost INTEGER,
+                next_due TEXT,
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (kayak_id) REFERENCES kayaks(id)
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS damage_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kayak_id INTEGER NOT NULL,
+                description TEXT NOT NULL,
+                severity TEXT NOT NULL DEFAULT 'minor',
+                status TEXT NOT NULL DEFAULT 'open',
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                resolved_at TEXT,
+                FOREIGN KEY (kayak_id) REFERENCES kayaks(id)
+            )
+            """
+        )
+        db.execute(
+            """
             CREATE TABLE IF NOT EXISTS audit_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_email TEXT NOT NULL,
@@ -253,6 +283,11 @@ def seed_kayaks(db):
 
 
 def migrate_db(db):
+    kayak_columns = {row[1] for row in db.execute("PRAGMA table_info(kayaks)").fetchall()}
+    if "status" not in kayak_columns:
+        db.execute("ALTER TABLE kayaks ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
+        db.execute("UPDATE kayaks SET status = CASE WHEN active = 1 THEN 'active' ELSE 'retired' END")
+
     columns = {row[1] for row in db.execute("PRAGMA table_info(bookings)").fetchall()}
     migrations = {
         "booking_reference": "ALTER TABLE bookings ADD COLUMN booking_reference TEXT",
@@ -480,7 +515,7 @@ def queue_booking_emails(booking_id, booking, kayak):
 
 def render_index(form_values=None, form_errors=None, status=200, date_suggestions=None):
     db = get_db()
-    kayaks = db.execute("SELECT * FROM kayaks WHERE active = 1").fetchall()
+    kayaks = db.execute("SELECT * FROM kayaks WHERE status = 'active'").fetchall()
     return (
         render_template(
             "index.html",
@@ -516,7 +551,7 @@ def availability():
         return jsonify({"error": "Invalid kayak_id, start, or days parameter."}), 400
 
     days = max(1, min(days, 90))
-    kayak = db.execute("SELECT id FROM kayaks WHERE id = ? AND active = 1", (kayak_id,)).fetchone()
+    kayak = db.execute("SELECT id FROM kayaks WHERE id = ? AND status = 'active'", (kayak_id,)).fetchone()
     if kayak is None:
         return jsonify({"error": "Unknown kayak."}), 404
 
@@ -555,7 +590,7 @@ def validate_booking_form(db, form):
     except ValueError:
         errors["kayak_id"] = "Please select a kayak."
     else:
-        kayak = db.execute("SELECT * FROM kayaks WHERE id = ? AND active = 1", (kayak_id,)).fetchone()
+        kayak = db.execute("SELECT * FROM kayaks WHERE id = ? AND status = 'active'", (kayak_id,)).fetchone()
         if kayak is None:
             errors["kayak_id"] = "That kayak is no longer available. Please pick another."
 
@@ -916,7 +951,7 @@ def admin_today():
         max(0, (b["total_price"] or 0) - paid_map.get(b["id"], 0)) for b in todays
     )
     on_water_count = sum(1 for b in todays if b["status"] == "on_water")
-    fleet_size = db.execute("SELECT COUNT(*) FROM kayaks WHERE active = 1").fetchone()[0]
+    fleet_size = db.execute("SELECT COUNT(*) FROM kayaks WHERE status = 'active'").fetchone()[0]
 
     tomorrows = db.execute(
         """
@@ -926,6 +961,17 @@ def admin_today():
         ORDER BY bookings.created_at
         """,
         (tomorrow_iso,),
+    ).fetchall()
+
+    maintenance_due = db.execute(
+        """
+        SELECT kayaks.name, MAX(maintenance_log.next_due) AS next_due, kayaks.id AS kayak_id
+        FROM maintenance_log JOIN kayaks ON kayaks.id = maintenance_log.kayak_id
+        WHERE kayaks.status != 'retired'
+        GROUP BY maintenance_log.kayak_id
+        HAVING MAX(maintenance_log.next_due) <= ?
+        """,
+        (today_iso,),
     ).fetchall()
 
     email_failures = db.execute(
@@ -945,6 +991,7 @@ def admin_today():
         late_ids={b["id"] for b in late},
         tomorrows=tomorrows,
         email_failures=email_failures,
+        maintenance_due=maintenance_due,
         paid_map=paid_map,
         expected_revenue=expected_revenue,
         unpaid_total=unpaid_total,
@@ -995,7 +1042,7 @@ def admin_checkin_booking(booking_id):
 @admin_required
 def admin_new_booking():
     db = get_db()
-    kayaks = db.execute("SELECT * FROM kayaks WHERE active = 1 ORDER BY id").fetchall()
+    kayaks = db.execute("SELECT * FROM kayaks WHERE status = 'active' ORDER BY id").fetchall()
     form_values = {}
     form_errors = {}
 
@@ -1007,7 +1054,7 @@ def admin_new_booking():
         kayak = None
         try:
             kayak = db.execute(
-                "SELECT * FROM kayaks WHERE id = ? AND active = 1", (int(form_values["kayak_id"] or 0),)
+                "SELECT * FROM kayaks WHERE id = ? AND status = 'active'", (int(form_values["kayak_id"] or 0),)
             ).fetchone()
         except ValueError:
             pass
@@ -1101,7 +1148,7 @@ def admin_booking_detail(booking_id):
         "SELECT * FROM audit_log WHERE entity = 'booking' AND entity_id = ? ORDER BY id DESC LIMIT 50",
         (str(booking_id),),
     ).fetchall()
-    kayaks = db.execute("SELECT * FROM kayaks WHERE active = 1 ORDER BY id").fetchall()
+    kayaks = db.execute("SELECT * FROM kayaks WHERE status != 'retired' ORDER BY id").fetchall()
     return render_template(
         "admin_booking.html",
         booking=booking,
@@ -1158,7 +1205,7 @@ def admin_update_booking(booking_id):
     start_date = booking_date
     end_date = booking_date
 
-    kayak = db.execute("SELECT * FROM kayaks WHERE id = ? AND active = 1", (kayak_id,)).fetchone()
+    kayak = db.execute("SELECT * FROM kayaks WHERE id = ? AND status != 'retired'", (kayak_id,)).fetchone()
     booking = db.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
     if kayak is None or booking is None:
         flash("Booking could not be updated because the kayak or booking was not found.", "error")
@@ -1294,6 +1341,217 @@ def admin_record_payment(booking_id):
     return admin_redirect()
 
 
+KAYAK_STATUSES = ("active", "maintenance", "retired")
+ALLOWED_PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+MAX_PHOTO_BYTES = 5 * 1024 * 1024
+
+
+def save_kayak_photo(file):
+    """Store an uploaded kayak photo under assets/kayaks/. Returns URL path or (None, error)."""
+    if not file or not file.filename:
+        return None, None
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in ALLOWED_PHOTO_EXTENSIONS:
+        return None, "Photo must be a JPG, PNG, or WebP file."
+    data = file.read()
+    if len(data) > MAX_PHOTO_BYTES:
+        return None, "Photo must be under 5 MB."
+    name = f"{secrets.token_hex(6)}-{secure_filename(Path(file.filename).stem)[:40] or 'kayak'}{suffix}"
+    folder = Path(current_app.config.get("UPLOAD_DIR") or BASE_DIR / "assets" / "kayaks")
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / name).write_bytes(data)
+    return f"/assets/kayaks/{name}", None
+
+
+def validate_kayak_form(form):
+    values = {
+        "name": form.get("name", "").strip(),
+        "tagline": form.get("tagline", "").strip(),
+        "capacity": form.get("capacity", "").strip(),
+        "price_per_day": form.get("price_per_day", "").strip(),
+    }
+    errors = []
+    if not values["name"]:
+        errors.append("Name is required.")
+    if not values["capacity"]:
+        values["capacity"] = "1 adult"
+    try:
+        values["price_per_day"] = int(values["price_per_day"])
+        if values["price_per_day"] <= 0:
+            raise ValueError
+    except ValueError:
+        errors.append("Price per day must be a positive number of rupees.")
+    return values, errors
+
+
+@admin_required
+def admin_fleet():
+    db = get_db()
+    month_start = local_today().replace(day=1).isoformat()
+    kayaks = db.execute("SELECT * FROM kayaks ORDER BY status = 'retired', id").fetchall()
+    stats = {
+        row["kayak_id"]: row
+        for row in db.execute(
+            """
+            SELECT kayak_id, COUNT(*) AS rentals, COALESCE(SUM(total_price), 0) AS revenue
+            FROM bookings
+            WHERE start_date >= ? AND status IN ('confirmed', 'on_water', 'returned')
+            GROUP BY kayak_id
+            """,
+            (month_start,),
+        ).fetchall()
+    }
+    maintenance = {}
+    for row in db.execute("SELECT * FROM maintenance_log ORDER BY id DESC").fetchall():
+        maintenance.setdefault(row["kayak_id"], []).append(row)
+    damage = {}
+    for row in db.execute("SELECT * FROM damage_reports ORDER BY status = 'resolved', id DESC").fetchall():
+        damage.setdefault(row["kayak_id"], []).append(row)
+    return render_template(
+        "admin_fleet.html",
+        kayaks=kayaks,
+        stats=stats,
+        maintenance=maintenance,
+        damage=damage,
+        month_label=local_today().strftime("%B"),
+    )
+
+
+@admin_required
+def admin_kayak_save(kayak_id=None):
+    db = get_db()
+    values, errors = validate_kayak_form(request.form)
+    photo_url, photo_error = save_kayak_photo(request.files.get("photo"))
+    if photo_error:
+        errors.append(photo_error)
+    if errors:
+        for message in errors:
+            flash(message, "error")
+        return redirect(url_for("admin_fleet"))
+
+    if kayak_id is None:
+        db.execute(
+            "INSERT INTO kayaks (name, tagline, capacity, price_per_day, image_url, status) VALUES (?, ?, ?, ?, ?, 'active')",
+            (values["name"], values["tagline"], values["capacity"], values["price_per_day"],
+             photo_url or "/assets/KayakTurquoise.jpg"),
+        )
+        record_audit(db, "created", "kayak", db.execute("SELECT last_insert_rowid()").fetchone()[0], values["name"])
+        flash(f"{values['name']} added to the fleet.", "success")
+    else:
+        kayak = db.execute("SELECT * FROM kayaks WHERE id = ?", (kayak_id,)).fetchone()
+        if kayak is None:
+            flash("Kayak not found.", "error")
+            return redirect(url_for("admin_fleet"))
+        db.execute(
+            "UPDATE kayaks SET name = ?, tagline = ?, capacity = ?, price_per_day = ?, image_url = ? WHERE id = ?",
+            (values["name"], values["tagline"], values["capacity"], values["price_per_day"],
+             photo_url or kayak["image_url"], kayak_id),
+        )
+        changes = "; ".join(
+            f"{field}: {kayak[field]!r} -> {values[field]!r}"
+            for field in ("name", "tagline", "capacity", "price_per_day")
+            if kayak[field] != values[field]
+        )
+        if photo_url:
+            changes = (changes + "; " if changes else "") + "photo updated"
+        if changes:
+            record_audit(db, "updated", "kayak", kayak_id, changes)
+        flash(f"{values['name']} saved.", "success")
+    db.commit()
+    return redirect(url_for("admin_fleet"))
+
+
+@admin_required
+def admin_kayak_status(kayak_id):
+    db = get_db()
+    kayak = db.execute("SELECT * FROM kayaks WHERE id = ?", (kayak_id,)).fetchone()
+    status = request.form.get("status", "")
+    if kayak is None or status not in KAYAK_STATUSES:
+        flash("Could not change kayak status.", "error")
+        return redirect(url_for("admin_fleet"))
+    db.execute(
+        "UPDATE kayaks SET status = ?, active = ? WHERE id = ?",
+        (status, 1 if status == "active" else 0, kayak_id),
+    )
+    record_audit(db, f"status-{status}", "kayak", kayak_id, kayak["name"])
+    db.commit()
+    flash(f"{kayak['name']} is now {status}.", "success")
+    return redirect(url_for("admin_fleet"))
+
+
+@admin_required
+def admin_kayak_maintenance(kayak_id):
+    db = get_db()
+    kayak = db.execute("SELECT * FROM kayaks WHERE id = ?", (kayak_id,)).fetchone()
+    description = request.form.get("description", "").strip()
+    if kayak is None or not description:
+        flash("Describe the maintenance work.", "error")
+        return redirect(url_for("admin_fleet"))
+    cost = None
+    if request.form.get("cost"):
+        try:
+            cost = max(0, int(request.form["cost"]))
+        except ValueError:
+            cost = None
+    next_due = request.form.get("next_due", "").strip() or None
+    if next_due:
+        try:
+            parse_booking_date(next_due)
+        except ValueError:
+            next_due = None
+    db.execute(
+        "INSERT INTO maintenance_log (kayak_id, description, cost, next_due, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (kayak_id, description, cost, next_due, g.user["email"],
+         datetime.now(timezone.utc).isoformat(timespec="seconds")),
+    )
+    record_audit(db, "maintenance-logged", "kayak", kayak_id, f"{kayak['name']}: {description}")
+    db.commit()
+    flash("Maintenance logged.", "success")
+    return redirect(url_for("admin_fleet"))
+
+
+@admin_required
+def admin_kayak_damage(kayak_id):
+    db = get_db()
+    kayak = db.execute("SELECT * FROM kayaks WHERE id = ?", (kayak_id,)).fetchone()
+    description = request.form.get("description", "").strip()
+    if kayak is None or not description:
+        flash("Describe the damage.", "error")
+        return redirect(url_for("admin_fleet"))
+    severity = request.form.get("severity", "minor")
+    if severity not in ("minor", "major", "unusable"):
+        severity = "minor"
+    db.execute(
+        "INSERT INTO damage_reports (kayak_id, description, severity, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+        (kayak_id, description, severity, g.user["email"],
+         datetime.now(timezone.utc).isoformat(timespec="seconds")),
+    )
+    record_audit(db, "damage-reported", "kayak", kayak_id, f"{kayak['name']} ({severity}): {description}")
+    if severity == "unusable" and kayak["status"] == "active":
+        db.execute("UPDATE kayaks SET status = 'maintenance', active = 0 WHERE id = ?", (kayak_id,))
+        record_audit(db, "status-maintenance", "kayak", kayak_id, "auto: unusable damage report")
+        flash(f"{kayak['name']} moved to maintenance — it can't take new bookings until repaired.", "warning")
+    db.commit()
+    flash("Damage report filed.", "success")
+    return redirect(url_for("admin_fleet"))
+
+
+@admin_required
+def admin_damage_resolve(report_id):
+    db = get_db()
+    report = db.execute("SELECT * FROM damage_reports WHERE id = ?", (report_id,)).fetchone()
+    if report is None or report["status"] == "resolved":
+        return redirect(url_for("admin_fleet"))
+    db.execute(
+        "UPDATE damage_reports SET status = 'resolved', resolved_at = ? WHERE id = ?",
+        (datetime.now(timezone.utc).isoformat(timespec="seconds"), report_id),
+    )
+    record_audit(db, "damage-resolved", "kayak", report["kayak_id"], report["description"][:120])
+    db.commit()
+    flash("Damage marked resolved.", "success")
+    return redirect(url_for("admin_fleet"))
+
+
 @admin_required
 def admin_audit():
     db = get_db()
@@ -1362,6 +1620,17 @@ def create_app(config_overrides=None):
     app.add_url_rule("/admin", "admin", admin)
     app.add_url_rule("/admin/today", "admin_today", admin_today)
     app.add_url_rule("/admin/bookings/new", "admin_new_booking", admin_new_booking, methods=["GET", "POST"])
+    app.add_url_rule("/admin/fleet", "admin_fleet", admin_fleet)
+    app.add_url_rule("/admin/fleet/new", "admin_kayak_new", admin_kayak_save, methods=["POST"])
+    app.add_url_rule("/admin/fleet/<int:kayak_id>/save", "admin_kayak_save", admin_kayak_save, methods=["POST"])
+    app.add_url_rule("/admin/fleet/<int:kayak_id>/status", "admin_kayak_status", admin_kayak_status, methods=["POST"])
+    app.add_url_rule(
+        "/admin/fleet/<int:kayak_id>/maintenance", "admin_kayak_maintenance", admin_kayak_maintenance, methods=["POST"]
+    )
+    app.add_url_rule("/admin/fleet/<int:kayak_id>/damage", "admin_kayak_damage", admin_kayak_damage, methods=["POST"])
+    app.add_url_rule(
+        "/admin/damage/<int:report_id>/resolve", "admin_damage_resolve", admin_damage_resolve, methods=["POST"]
+    )
     app.add_url_rule(
         "/admin/bookings/<int:booking_id>/checkout", "admin_checkout_booking", admin_checkout_booking, methods=["POST"]
     )

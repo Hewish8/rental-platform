@@ -93,9 +93,18 @@
     {% endfor %}
   </section>
 
-  {% if email_failures %}
+  {% if email_failures or maintenance_due %}
     <section class="departures">
       <h2>Needs attention</h2>
+      {% for item in maintenance_due %}
+        <article class="departure-card is-late">
+          <div class="departure-info">
+            <strong>Maintenance due — {{ item.name }}</strong>
+            <span>Due since {{ item.next_due }}</span>
+          </div>
+          <a class="button secondary" href="{{ url_for('admin_fleet') }}">Open fleet</a>
+        </article>
+      {% endfor %}
       {% for booking in email_failures %}
         <article class="departure-card is-late">
           <div class="departure-info">

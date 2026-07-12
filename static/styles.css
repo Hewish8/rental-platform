@@ -2175,3 +2175,50 @@ dd,
   display: flex;
   gap: 0.5rem;
 }
+
+
+/* --- Fleet page ------------------------------------------------------------ */
+
+.fleet-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.fleet-card.is-retired {
+  opacity: 0.55;
+}
+
+.fleet-photo {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-3);
+}
+
+.fleet-card h2 {
+  margin-bottom: 0;
+  font-size: 1.3rem;
+}
+
+.status-form {
+  display: flex;
+  gap: 0.5rem;
+  margin: var(--space-3) 0;
+}
+
+.kayak-active { color: var(--color-success); background: var(--color-success-soft); }
+.kayak-maintenance { color: var(--color-warning); background: var(--color-warning-soft); }
+.kayak-retired { color: var(--muted); background: rgba(23, 49, 45, 0.08); }
+
+.damage-open {
+  border-left: 3px solid var(--color-danger);
+}
+
+@media (max-width: 780px) {
+  .fleet-grid {
+    grid-template-columns: 1fr;
+  }
+}

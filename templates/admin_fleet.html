@@ -1,0 +1,110 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Fleet — Admin{% endblock %}
+{% block admin_title %}Fleet{% endblock %}
+
+{% block admin_body %}
+  <section class="fleet-grid">
+    {% for kayak in kayaks %}
+      <article class="admin-tool fleet-card {% if kayak.status == 'retired' %}is-retired{% endif %}">
+        <img class="fleet-photo" src="{{ kayak.image_url }}" alt="{{ kayak.name }}" loading="lazy" width="600" height="375">
+        <div class="detail-head">
+          <h2>{{ kayak.name }}</h2>
+          <span class="status-chip kayak-{{ kayak.status }}">{{ kayak.status }}</span>
+        </div>
+        <p class="admin-muted">Rs {{ kayak.price_per_day }}/day · {{ kayak.capacity }}</p>
+        {% set stat = stats.get(kayak.id) %}
+        <p class="admin-muted">{{ month_label }}: {{ stat.rentals if stat else 0 }} rentals · Rs {{ stat.revenue if stat else 0 }}</p>
+
+        <form method="post" action="{{ url_for('admin_kayak_status', kayak_id=kayak.id) }}" class="status-form">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <select name="status" aria-label="Kayak status">
+            {% for status in ['active', 'maintenance', 'retired'] %}
+              <option value="{{ status }}" {% if kayak.status == status %}selected{% endif %}>{{ status }}</option>
+            {% endfor %}
+          </select>
+          <button class="button secondary" type="submit">Set status</button>
+        </form>
+
+        <details class="edit-panel">
+          <summary>Edit kayak</summary>
+          <form method="post" action="{{ url_for('admin_kayak_save', kayak_id=kayak.id) }}" enctype="multipart/form-data" class="edit-form">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <label>Name <input required name="name" value="{{ kayak.name }}"></label>
+            <label>Price / day (Rs) <input required name="price_per_day" type="number" min="1" value="{{ kayak.price_per_day }}"></label>
+            <label>Capacity <input name="capacity" value="{{ kayak.capacity }}"></label>
+            <label>Photo <input name="photo" type="file" accept=".jpg,.jpeg,.png,.webp"></label>
+            <label class="full">Tagline <input name="tagline" value="{{ kayak.tagline }}"></label>
+            <button class="button primary" type="submit">Save</button>
+          </form>
+        </details>
+
+        <details class="edit-panel">
+          <summary>Maintenance ({{ maintenance.get(kayak.id, [])|length }})</summary>
+          <ul class="payment-list">
+            {% for entry in maintenance.get(kayak.id, []) %}
+              <li>
+                <strong>{{ entry.created_at[:10] }}</strong> {{ entry.description }}
+                <span>{% if entry.cost %}Rs {{ entry.cost }} · {% endif %}{% if entry.next_due %}next due {{ entry.next_due }} · {% endif %}{{ entry.created_by }}</span>
+              </li>
+            {% else %}
+              <li>No maintenance logged.</li>
+            {% endfor %}
+          </ul>
+          <form method="post" action="{{ url_for('admin_kayak_maintenance', kayak_id=kayak.id) }}" class="edit-form">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <label class="full">What was done <input required name="description" placeholder="Hull patch, new hatch cover…"></label>
+            <label>Cost (Rs) <input name="cost" type="number" min="0"></label>
+            <label>Next due <input name="next_due" type="date"></label>
+            <button class="button secondary" type="submit">Log maintenance</button>
+          </form>
+        </details>
+
+        <details class="edit-panel">
+          <summary>Damage reports ({{ damage.get(kayak.id, [])|selectattr('status', 'equalto', 'open')|list|length }} open)</summary>
+          <ul class="payment-list">
+            {% for report in damage.get(kayak.id, []) %}
+              <li class="{% if report.status == 'open' %}damage-open{% endif %}">
+                <strong>{{ report.severity }}</strong> {{ report.description }}
+                <span>{{ report.created_at[:10] }} by {{ report.created_by }}{% if report.status == 'resolved' %} · resolved{% endif %}</span>
+                {% if report.status == 'open' %}
+                  <form method="post" action="{{ url_for('admin_damage_resolve', report_id=report.id) }}">
+                    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                    <button class="button resend" type="submit">Mark resolved</button>
+                  </form>
+                {% endif %}
+              </li>
+            {% else %}
+              <li>No damage reported.</li>
+            {% endfor %}
+          </ul>
+          <form method="post" action="{{ url_for('admin_kayak_damage', kayak_id=kayak.id) }}" class="edit-form">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <label class="full">Describe the damage <input required name="description" placeholder="Crack near the bow…"></label>
+            <label>Severity
+              <select name="severity">
+                <option value="minor">minor — still usable</option>
+                <option value="major">major — watch closely</option>
+                <option value="unusable">unusable — block bookings</option>
+              </select>
+            </label>
+            <button class="button secondary" type="submit">File report</button>
+          </form>
+        </details>
+      </article>
+    {% endfor %}
+
+    <article class="admin-tool fleet-card add-kayak">
+      <h2>Add a kayak</h2>
+      <form method="post" action="{{ url_for('admin_kayak_new') }}" enctype="multipart/form-data" class="edit-form">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <label>Name <input required name="name" placeholder="Reef Runner"></label>
+        <label>Price / day (Rs) <input required name="price_per_day" type="number" min="1" value="1200"></label>
+        <label>Capacity <input name="capacity" value="1 adult"></label>
+        <label>Photo <input name="photo" type="file" accept=".jpg,.jpeg,.png,.webp"></label>
+        <label class="full">Tagline <input name="tagline" placeholder="Short line shown on the website"></label>
+        <button class="button primary" type="submit">Add to fleet</button>
+      </form>
+    </article>
+  </section>
+{% endblock %}
