@@ -1,0 +1,43 @@
+# Render Blueprint: New -> Blueprint -> pick this repo. Render asks for the
+# values marked "sync: false" during setup.
+services:
+  - type: web
+    name: kayak-rental
+    runtime: python
+    plan: starter # a persistent disk needs a paid instance
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    # One worker: SQLite and the in-memory login throttle assume a single process.
+    startCommand: gunicorn app:app --workers 1 --threads 4 --bind 0.0.0.0:$PORT
+    healthCheckPath: /
+    disk:
+      name: kayak-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      - key: KAYAK_DATA_DIR
+        value: /var/data
+      - key: KAYAK_BEHIND_PROXY
+        value: "true"
+      - key: KAYAK_DEBUG
+        value: "false"
+      - key: KAYAK_SECRET_KEY
+        generateValue: true
+      - key: KAYAK_OWNER_EMAIL
+        sync: false
+      - key: KAYAK_OWNER_PASSWORD
+        sync: false
+      - key: KAYAK_FROM_EMAIL
+        sync: false
+      - key: KAYAK_SMTP_HOST
+        value: smtp.gmail.com
+      - key: KAYAK_SMTP_PORT
+        value: "587"
+      - key: KAYAK_SMTP_USE_TLS
+        value: "true"
+      - key: KAYAK_SMTP_USERNAME
+        sync: false
+      - key: KAYAK_SMTP_PASSWORD
+        sync: false

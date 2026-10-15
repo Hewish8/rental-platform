@@ -25,6 +25,7 @@ from flask import (
     session,
     url_for,
 )
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -66,9 +67,14 @@ _PLACEHOLDER_SECRETS = {"", "dev-change-me", "change-this-to-a-long-random-secre
 
 
 def default_config():
+    # On hosts with an ephemeral filesystem, KAYAK_DATA_DIR points at the
+    # persistent disk that holds the database and uploaded photos.
+    data_dir = os.getenv("KAYAK_DATA_DIR")
     return {
         "SECRET_KEY": os.getenv("KAYAK_SECRET_KEY", ""),
-        "DATABASE": DATABASE,
+        "DATABASE": Path(data_dir) / "kayak_rental.db" if data_dir else DATABASE,
+        "UPLOAD_DIR": Path(data_dir) / "kayaks" if data_dir else None,
+        "BEHIND_PROXY": os.getenv("KAYAK_BEHIND_PROXY", "false").lower() == "true",
         "OWNER_EMAIL": os.getenv("KAYAK_OWNER_EMAIL", "owner@example.com"),
         "OWNER_PASSWORD": os.getenv("KAYAK_OWNER_PASSWORD"),
         "FROM_EMAIL": os.getenv("KAYAK_FROM_EMAIL") or os.getenv("KAYAK_OWNER_EMAIL", "owner@example.com"),
@@ -601,6 +607,9 @@ def index():
 
 
 def assets(filename):
+    upload_dir = current_app.config.get("UPLOAD_DIR")
+    if upload_dir and filename.startswith("kayaks/"):
+        return send_from_directory(upload_dir, filename.removeprefix("kayaks/"))
     return send_from_directory(BASE_DIR / "assets", filename)
 
 
@@ -2228,6 +2237,10 @@ def create_app(config_overrides=None):
     app.config["TEMPLATES_AUTO_RELOAD"] = True
     app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
     app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
+    if app.config.get("BEHIND_PROXY"):
+        # Trust the host's proxy for the real client IP (login throttling) and HTTPS.
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
+        app.config["SESSION_COOKIE_SECURE"] = True
     app.jinja_env.globals["csrf_token"] = csrf_token
 
     @app.context_processor
