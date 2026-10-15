@@ -508,7 +508,7 @@ You're booked! Here is everything you need for your paddle on Mahebourg Lagoon.
   Kayak:     {kayak['name']}
   Dates:     {display_booking_date(booking)}
   Reference: {reference}
-  Total:     Rs {booking['total_price']} — pay on arrival, cash or card
+  Total:     Rs {booking['total_price']} — pay in cash on arrival
 
 WHERE TO FIND US
   {site['meeting_point']}
