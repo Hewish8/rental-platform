@@ -695,6 +695,8 @@ def validate_booking_form(db, form):
             errors["booking_date"] = "That date has already passed. Please pick an upcoming date."
         elif weekends_only(db) and range_has_weekday(start_date, end_date):
             errors["booking_date"] = "We're open on Saturdays and Sundays only. Please pick weekend dates."
+        elif get_settings(db)["multi_day"] != "1" and start_date != end_date:
+            errors["booking_date"] = "Bookings are for one day at a time. Please pick a single date."
         elif count_days(start_date, end_date) > BOOKING_MAX_DAYS:
             errors["booking_date"] = f"Bookings are limited to {BOOKING_MAX_DAYS} days. For longer rentals, message us on WhatsApp."
         elif kayak is not None and not date_range_is_available(db, kayak["id"], start_date, end_date):
@@ -1047,10 +1049,12 @@ DEFAULT_SETTINGS = {
     "meeting_point": "Mahebourg Waterfront, near the Pointe des Regates monument",
     "hours_text": "Open daily, 8:00 - 17:00 (last departure 15:00)",
     "weekends_only": "0",
+    "multi_day": "1",
 }
 
 # Settings edited as free text in the admin form; the rest are switches.
 TEXT_SETTINGS = ("whatsapp_number", "phone_display", "meeting_point", "hours_text")
+SWITCH_SETTINGS = ("weekends_only", "multi_day")
 
 
 def weekends_only(db):
@@ -2202,13 +2206,15 @@ def admin_settings():
                 )
                 changed.append(key)
         # An unchecked checkbox is simply absent from the form.
-        weekends_value = "1" if request.form.get("weekends_only") else "0"
-        if weekends_value != get_settings(db)["weekends_only"]:
-            db.execute(
-                "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
-                ("weekends_only", weekends_value, weekends_value),
-            )
-            changed.append("weekends_only")
+        current = get_settings(db)
+        for key in SWITCH_SETTINGS:
+            value = "1" if request.form.get(key) else "0"
+            if value != current[key]:
+                db.execute(
+                    "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+                    (key, value, value),
+                )
+                changed.append(key)
         if changed:
             record_audit(db, "updated", "settings", None, ", ".join(changed))
             db.commit()

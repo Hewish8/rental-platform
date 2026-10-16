@@ -124,9 +124,9 @@
       <div class="section-copy">
         <p class="eyebrow">Live availability</p>
         <h2>Pick your date.</h2>
-        <p>Tap a day for <strong id="calendarKayakName">your kayak</strong> — tap a second day to book several days in a row (up to 14).</p>
+        <p>Tap a day for <strong id="calendarKayakName">your kayak</strong>{% if site.multi_day == '1' %} — tap a second day to book several days in a row (up to 14){% endif %}.</p>
       </div>
-      <div class="calendar" role="group" aria-label="Availability calendar">
+      <div class="calendar" role="group" aria-label="Availability calendar" data-multi-day="{{ site.multi_day }}">
         <div class="availability-toolbar">
           <button class="icon-button" id="previousDates" type="button" aria-label="Previous month">{{ icon('chevron-left') }}</button>
           <strong id="calendarRange">&nbsp;</strong>

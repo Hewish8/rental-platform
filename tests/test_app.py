@@ -778,7 +778,7 @@ def next_weekday(weekday):
 
 def test_weekends_only_switch(app, client, admin_client):
     saturday, sunday, friday = next_weekday(5), next_weekday(6), next_weekday(4)
-    admin_client.post("/admin/settings", data={"weekends_only": "1"})
+    admin_client.post("/admin/settings", data={"weekends_only": "1", "multi_day": "1"})
     assert db_rows(app, "SELECT value FROM settings WHERE key = 'weekends_only'")[0][0] == "1"
 
     days = client.get(f"/api/availability?kayak_id=1&start={friday.isoformat()}&days=3").get_json()
@@ -793,8 +793,22 @@ def test_weekends_only_switch(app, client, admin_client):
         booking_date="", start_date=saturday.isoformat(), end_date=sunday.isoformat())).status_code == 302
 
     # Unchecking the box (absent from the form) switches it off again.
-    admin_client.post("/admin/settings", data={})
+    admin_client.post("/admin/settings", data={"multi_day": "1"})
     assert client.post("/book", data=booking_form(booking_date=friday.isoformat())).status_code == 302
+
+
+def test_multi_day_switch(app, client, admin_client):
+    saturday, sunday = next_weekday(5), next_weekday(6)
+    two_days = booking_form(booking_date="", start_date=saturday.isoformat(), end_date=sunday.isoformat())
+    assert b'data-multi-day="1"' in client.get("/").data
+
+    admin_client.post("/admin/settings", data={})  # multi-day box unticked
+    assert b'data-multi-day="0"' in client.get("/").data
+    assert b"one day at a time" in client.post("/book", data=two_days).data
+    assert client.post("/book", data=booking_form(booking_date=saturday.isoformat())).status_code == 302
+
+    admin_client.post("/admin/settings", data={"multi_day": "1"})
+    assert client.post("/book", data=dict(two_days, kayak_id="2")).status_code == 302
 
 
 def test_change_password(app, admin_client):

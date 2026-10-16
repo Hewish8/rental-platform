@@ -30,7 +30,9 @@ let selectedStart = startDateInput?.value || null;
 let selectedEnd = endDateInput?.value || selectedStart;
 let monthAvailability = {};
 
-const MAX_RANGE_DAYS = 14;
+// The owner can switch multi-day bookings off; a second tap then starts a new selection.
+const MULTI_DAY = document.querySelector(".calendar")?.dataset.multiDay !== "0";
+const MAX_RANGE_DAYS = MULTI_DAY ? 14 : 1;
 
 function rangeDays(startIso, endIso) {
   const [y1, m1, d1] = startIso.split("-").map(Number);
@@ -107,7 +109,7 @@ function updateSelectionLine() {
   const rate = card ? Number(card.dataset.kayakPrice) : 0;
   const total = discountedTotal(rate * days);
   if (!selectedEnd || selectedEnd === selectedStart) {
-    calendarSelection.innerHTML = `<strong>${prettyDate(selectedStart)}</strong> · ${name} · <strong>Rs ${total}</strong> <em class="selection-hint">Tap another day for a multi-day rental</em>`;
+    calendarSelection.innerHTML = `<strong>${prettyDate(selectedStart)}</strong> · ${name} · <strong>Rs ${total}</strong>${MULTI_DAY ? ' <em class="selection-hint">Tap another day for a multi-day rental</em>' : ""}`;
   } else {
     calendarSelection.innerHTML = `<strong>${prettyDate(selectedStart)} – ${prettyDate(selectedEnd)}</strong> · ${days} days · ${name} · <strong>Rs ${total}</strong>`;
   }
