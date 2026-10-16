@@ -454,6 +454,24 @@ def test_fleet_page_and_kayak_crud(app, admin_client, client):
     assert client.get(f"/api/availability?kayak_id={kayak_id}").status_code == 404
 
 
+def test_delete_kayak(app, admin_client, client):
+    admin_client.post("/admin/fleet/new", data={
+        "name": "Reef Runner", "tagline": "Test kayak", "capacity": "1 adult", "price_per_day": "999",
+    })
+    kayak_id = db_rows(app, "SELECT id FROM kayaks WHERE name = 'Reef Runner'")[0][0]
+    admin_client.post(f"/admin/fleet/{kayak_id}/maintenance", data={"description": "New seat"})
+    admin_client.post(f"/admin/fleet/{kayak_id}/delete")
+    assert db_rows(app, "SELECT COUNT(*) FROM kayaks WHERE id = ?", (kayak_id,))[0][0] == 0
+    assert db_rows(app, "SELECT COUNT(*) FROM maintenance_log WHERE kayak_id = ?", (kayak_id,))[0][0] == 0
+    assert b"Reef Runner" not in client.get("/").data
+
+    # A kayak with booking history is kept; retiring is the way to hide it.
+    client.post("/book", data=booking_form(kayak_id="1"))
+    response = admin_client.post("/admin/fleet/1/delete", follow_redirects=True)
+    assert b"can&#39;t be deleted" in response.data
+    assert db_rows(app, "SELECT COUNT(*) FROM kayaks WHERE id = 1")[0][0] == 1
+
+
 def test_unusable_damage_blocks_bookings(app, admin_client, client):
     admin_client.post("/admin/fleet/1/damage", data={"description": "Cracked hull", "severity": "unusable"})
     row = db_rows(app, "SELECT status FROM kayaks WHERE id = 1")[0]
@@ -738,6 +756,8 @@ def test_staff_blocked_from_owner_pages(staff_client):
     # Owner-only mutations too
     response = staff_client.post("/admin/fleet/1/status", data={"status": "retired"})
     assert response.status_code == 302
+    assert "/admin/today" in response.headers["Location"]
+    response = staff_client.post("/admin/fleet/1/delete")
     assert "/admin/today" in response.headers["Location"]
 
 

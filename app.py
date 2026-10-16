@@ -1809,6 +1809,31 @@ def admin_kayak_status(kayak_id):
 
 
 @owner_required
+def admin_kayak_delete(kayak_id):
+    db = get_db()
+    kayak = db.execute("SELECT * FROM kayaks WHERE id = ?", (kayak_id,)).fetchone()
+    if kayak is None:
+        flash("That kayak no longer exists.", "error")
+        return redirect(url_for("admin_fleet"))
+    # Bookings are never hard-deleted, so a kayak with any booking history stays.
+    bookings = db.execute("SELECT COUNT(*) FROM bookings WHERE kayak_id = ?", (kayak_id,)).fetchone()[0]
+    if bookings:
+        flash(
+            f"{kayak['name']} has {bookings} booking(s) in its history, so it can't be deleted. "
+            "Set its status to retired to hide it from the website.",
+            "error",
+        )
+        return redirect(url_for("admin_fleet"))
+    db.execute("DELETE FROM maintenance_log WHERE kayak_id = ?", (kayak_id,))
+    db.execute("DELETE FROM damage_reports WHERE kayak_id = ?", (kayak_id,))
+    db.execute("DELETE FROM kayaks WHERE id = ?", (kayak_id,))
+    record_audit(db, "deleted", "kayak", kayak_id, kayak["name"])
+    db.commit()
+    flash(f"{kayak['name']} was deleted.", "success")
+    return redirect(url_for("admin_fleet"))
+
+
+@owner_required
 def admin_kayak_maintenance(kayak_id):
     db = get_db()
     kayak = db.execute("SELECT * FROM kayaks WHERE id = ?", (kayak_id,)).fetchone()
@@ -2335,6 +2360,7 @@ def create_app(config_overrides=None):
     app.add_url_rule("/admin/fleet/new", "admin_kayak_new", admin_kayak_save, methods=["POST"])
     app.add_url_rule("/admin/fleet/<int:kayak_id>/save", "admin_kayak_save", admin_kayak_save, methods=["POST"])
     app.add_url_rule("/admin/fleet/<int:kayak_id>/status", "admin_kayak_status", admin_kayak_status, methods=["POST"])
+    app.add_url_rule("/admin/fleet/<int:kayak_id>/delete", "admin_kayak_delete", admin_kayak_delete, methods=["POST"])
     app.add_url_rule(
         "/admin/fleet/<int:kayak_id>/maintenance", "admin_kayak_maintenance", admin_kayak_maintenance, methods=["POST"]
     )

@@ -91,6 +91,12 @@
             <button class="button secondary" type="submit">File report</button>
           </form>
         </details>
+
+        <form method="post" action="{{ url_for('admin_kayak_delete', kayak_id=kayak.id) }}"
+              onsubmit="return confirm('Delete this kayak permanently? Its maintenance log and damage reports are deleted too.')">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <button class="button danger" type="submit">Delete kayak</button>
+        </form>
       </article>
     {% endfor %}
 
