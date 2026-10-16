@@ -1266,6 +1266,17 @@ footer p {
     grid-template-columns: 1fr;
   }
 
+  /* One card per row on phones, so show each photo whole instead of
+     cropping it to the desktop 16:10 frame. Very tall photos are capped
+     and letterboxed rather than cut. */
+  .kayak-card img {
+    aspect-ratio: auto 16 / 10;
+    height: auto;
+    max-height: 70vh;
+    object-fit: contain;
+    background: var(--surface-tint);
+  }
+
   .lagoon-strip {
     grid-template-columns: 1fr;
     height: auto;
