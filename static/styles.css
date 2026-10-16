@@ -635,7 +635,8 @@ dd {
   transform: scale(1.06);
 }
 
-.day.past {
+.day.past,
+.day.closed {
   color: rgba(23, 49, 45, 0.32);
 }
 

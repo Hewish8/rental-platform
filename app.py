@@ -440,9 +440,12 @@ def booked_dates(db, kayak_id, start, end):
 def nearest_available_dates(db, kayak_id, around, count=3, horizon=45):
     """Closest bookable dates to a requested day, nearest first, future-biased."""
     suggestions = []
+    skip_weekdays = weekends_only(db)
     for offset in range(1, horizon + 1):
         for candidate in (around + timedelta(days=offset), around - timedelta(days=offset)):
             if candidate < local_today():
+                continue
+            if skip_weekdays and candidate.weekday() < 5:
                 continue
             if date_range_is_available(db, kayak_id, candidate, candidate):
                 suggestions.append(candidate)
@@ -629,16 +632,19 @@ def availability():
 
     end = start + timedelta(days=days - 1)
     booked = booked_dates(db, kayak_id, start, end)
+    skip_weekdays = weekends_only(db)
 
     availability_days = []
     for offset in range(days):
         current = start + timedelta(days=offset)
+        closed = skip_weekdays and current.weekday() < 5
         availability_days.append(
             {
                 "date": current.isoformat(),
                 "label": current.strftime("%d %b"),
                 "weekday": current.strftime("%a"),
-                "available": current.isoformat() not in booked,
+                "available": current.isoformat() not in booked and not closed,
+                "closed": closed,
             }
         )
     return jsonify(availability_days)
@@ -687,6 +693,8 @@ def validate_booking_form(db, form):
             values["start_date"], values["end_date"] = start_date.isoformat(), end_date.isoformat()
         if start_date < local_today():
             errors["booking_date"] = "That date has already passed. Please pick an upcoming date."
+        elif weekends_only(db) and range_has_weekday(start_date, end_date):
+            errors["booking_date"] = "We're open on Saturdays and Sundays only. Please pick weekend dates."
         elif count_days(start_date, end_date) > BOOKING_MAX_DAYS:
             errors["booking_date"] = f"Bookings are limited to {BOOKING_MAX_DAYS} days. For longer rentals, message us on WhatsApp."
         elif kayak is not None and not date_range_is_available(db, kayak["id"], start_date, end_date):
@@ -1038,7 +1046,19 @@ DEFAULT_SETTINGS = {
     "phone_display": "+230 5XXX XXXX",
     "meeting_point": "Mahebourg Waterfront, near the Pointe des Regates monument",
     "hours_text": "Open daily, 8:00 - 17:00 (last departure 15:00)",
+    "weekends_only": "0",
 }
+
+# Settings edited as free text in the admin form; the rest are switches.
+TEXT_SETTINGS = ("whatsapp_number", "phone_display", "meeting_point", "hours_text")
+
+
+def weekends_only(db):
+    return get_settings(db)["weekends_only"] == "1"
+
+
+def range_has_weekday(start_date, end_date):
+    return any((start_date + timedelta(days=i)).weekday() < 5 for i in range(count_days(start_date, end_date)))
 
 
 def get_settings(db):
@@ -2173,7 +2193,7 @@ def admin_settings():
     db = get_db()
     if request.method == "POST":
         changed = []
-        for key in DEFAULT_SETTINGS:
+        for key in TEXT_SETTINGS:
             value = request.form.get(key, "").strip()
             if value:
                 db.execute(
@@ -2181,6 +2201,14 @@ def admin_settings():
                     (key, value, value),
                 )
                 changed.append(key)
+        # An unchecked checkbox is simply absent from the form.
+        weekends_value = "1" if request.form.get("weekends_only") else "0"
+        if weekends_value != get_settings(db)["weekends_only"]:
+            db.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+                ("weekends_only", weekends_value, weekends_value),
+            )
+            changed.append("weekends_only")
         if changed:
             record_audit(db, "updated", "settings", None, ", ".join(changed))
             db.commit()

@@ -241,6 +241,9 @@ async function loadAvailability() {
     if (isPast) {
       tile.classList.add("past");
       tile.disabled = true;
+    } else if (day.closed) {
+      tile.classList.add("closed");
+      tile.disabled = true;
     } else if (!day.available) {
       tile.classList.add("booked");
       tile.disabled = true;
@@ -260,7 +263,7 @@ async function loadAvailability() {
     const prettyFull = dateObj.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
     tile.setAttribute(
       "aria-label",
-      `${prettyFull} — ${isPast ? "past" : day.available ? "available" : "booked"}`
+      `${prettyFull} — ${isPast ? "past" : day.closed ? "closed" : day.available ? "available" : "booked"}`
     );
     if (bookable) {
       tile.addEventListener("click", () => {

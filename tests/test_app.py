@@ -770,6 +770,33 @@ def test_settings_flow_to_public_site(app, client, admin_client):
     assert b"+230 5777 8888" in page.data
 
 
+def next_weekday(weekday):
+    """Next date (at least a week out) falling on the given weekday, Monday = 0."""
+    start = date.today() + timedelta(days=7)
+    return start + timedelta(days=(weekday - start.weekday()) % 7)
+
+
+def test_weekends_only_switch(app, client, admin_client):
+    saturday, sunday, friday = next_weekday(5), next_weekday(6), next_weekday(4)
+    admin_client.post("/admin/settings", data={"weekends_only": "1"})
+    assert db_rows(app, "SELECT value FROM settings WHERE key = 'weekends_only'")[0][0] == "1"
+
+    days = client.get(f"/api/availability?kayak_id=1&start={friday.isoformat()}&days=3").get_json()
+    assert [(d["available"], d["closed"]) for d in days] == [(False, True), (True, False), (True, False)]
+
+    response = client.post("/book", data=booking_form(booking_date=friday.isoformat()))
+    assert b"Saturdays and Sundays only" in response.data
+    response = client.post("/book", data=booking_form(
+        booking_date="", start_date=friday.isoformat(), end_date=sunday.isoformat()))
+    assert b"Saturdays and Sundays only" in response.data
+    assert client.post("/book", data=booking_form(
+        booking_date="", start_date=saturday.isoformat(), end_date=sunday.isoformat())).status_code == 302
+
+    # Unchecking the box (absent from the form) switches it off again.
+    admin_client.post("/admin/settings", data={})
+    assert client.post("/book", data=booking_form(booking_date=friday.isoformat())).status_code == 302
+
+
 def test_change_password(app, admin_client):
     # Wrong current password rejected
     admin_client.post("/admin/account", data={
