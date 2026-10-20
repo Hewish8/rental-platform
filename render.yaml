@@ -2,7 +2,7 @@
 # values marked "sync: false" during setup.
 services:
   - type: web
-    name: kayak-rental
+    name: rental-platform
     runtime: python
     plan: starter # a persistent disk needs a paid instance
     region: frankfurt
@@ -11,7 +11,7 @@ services:
     startCommand: gunicorn app:app --workers 1 --threads 4 --bind 0.0.0.0:$PORT
     healthCheckPath: /
     disk:
-      name: kayak-data
+      name: rental-platform-data
       mountPath: /var/data
       sizeGB: 1
     envVars:
