@@ -62,27 +62,36 @@ def load_env_file():
 
 load_env_file()
 
-DEBUG = os.getenv("KAYAK_DEBUG", "false").lower() == "true"
+def env(name, default=None):
+    """Read RENTAL_<name>, falling back to the older KAYAK_<name> spelling."""
+    for prefix in ("RENTAL_", "KAYAK_"):
+        value = os.getenv(prefix + name)
+        if value is not None:
+            return value
+    return default
+
+
+DEBUG = env("DEBUG", "false").lower() == "true"
 _PLACEHOLDER_SECRETS = {"", "dev-change-me", "change-this-to-a-long-random-secret"}
 
 
 def default_config():
-    # On hosts with an ephemeral filesystem, KAYAK_DATA_DIR points at the
+    # On hosts with an ephemeral filesystem, RENTAL_DATA_DIR points at the
     # persistent disk that holds the database and uploaded photos.
-    data_dir = os.getenv("KAYAK_DATA_DIR")
+    data_dir = env("DATA_DIR")
     return {
-        "SECRET_KEY": os.getenv("KAYAK_SECRET_KEY", ""),
+        "SECRET_KEY": env("SECRET_KEY", ""),
         "DATABASE": Path(data_dir) / "kayak_rental.db" if data_dir else DATABASE,
         "UPLOAD_DIR": Path(data_dir) / "kayaks" if data_dir else None,
-        "BEHIND_PROXY": os.getenv("KAYAK_BEHIND_PROXY", "false").lower() == "true",
-        "OWNER_EMAIL": os.getenv("KAYAK_OWNER_EMAIL", "owner@example.com"),
-        "OWNER_PASSWORD": os.getenv("KAYAK_OWNER_PASSWORD"),
-        "FROM_EMAIL": os.getenv("KAYAK_FROM_EMAIL") or os.getenv("KAYAK_OWNER_EMAIL", "owner@example.com"),
-        "SMTP_HOST": os.getenv("KAYAK_SMTP_HOST"),
-        "SMTP_PORT": int(os.getenv("KAYAK_SMTP_PORT", "587")),
-        "SMTP_USERNAME": os.getenv("KAYAK_SMTP_USERNAME"),
-        "SMTP_PASSWORD": os.getenv("KAYAK_SMTP_PASSWORD"),
-        "SMTP_USE_TLS": os.getenv("KAYAK_SMTP_USE_TLS", "true").lower() == "true",
+        "BEHIND_PROXY": env("BEHIND_PROXY", "false").lower() == "true",
+        "OWNER_EMAIL": env("OWNER_EMAIL", "owner@example.com"),
+        "OWNER_PASSWORD": env("OWNER_PASSWORD"),
+        "FROM_EMAIL": env("FROM_EMAIL") or env("OWNER_EMAIL", "owner@example.com"),
+        "SMTP_HOST": env("SMTP_HOST"),
+        "SMTP_PORT": int(env("SMTP_PORT", "587")),
+        "SMTP_USERNAME": env("SMTP_USERNAME"),
+        "SMTP_PASSWORD": env("SMTP_PASSWORD"),
+        "SMTP_USE_TLS": env("SMTP_USE_TLS", "true").lower() == "true",
     }
 
 
@@ -461,7 +470,7 @@ def smtp_is_configured(cfg):
 def send_email(cfg, recipient, subject, body, reply_to=None):
     if not smtp_is_configured(cfg):
         raise RuntimeError(
-            "SMTP is not configured. Fill in KAYAK_SMTP_HOST, KAYAK_FROM_EMAIL, and KAYAK_OWNER_EMAIL in .env."
+            "SMTP is not configured. Fill in RENTAL_SMTP_HOST, RENTAL_FROM_EMAIL, and RENTAL_OWNER_EMAIL in .env."
         )
 
     message = EmailMessage()
@@ -2288,9 +2297,9 @@ def create_app(config_overrides=None):
         app.config["SECRET_KEY"] = "test-secret" if app.config.get("TESTING") else ""
     if app.config["SECRET_KEY"] in _PLACEHOLDER_SECRETS and not (DEBUG or app.config.get("TESTING")):
         raise RuntimeError(
-            "KAYAK_SECRET_KEY is not set. Generate one with "
+            "RENTAL_SECRET_KEY is not set. Generate one with "
             "'python -c \"import secrets; print(secrets.token_urlsafe(32))\"' and put it in .env, "
-            "or set KAYAK_DEBUG=true for local development."
+            "or set RENTAL_DEBUG=true for local development."
         )
 
     app.config["TEMPLATES_AUTO_RELOAD"] = True

@@ -17,27 +17,27 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.10
-      - key: KAYAK_DATA_DIR
+      - key: RENTAL_DATA_DIR
         value: /var/data
-      - key: KAYAK_BEHIND_PROXY
+      - key: RENTAL_BEHIND_PROXY
         value: "true"
-      - key: KAYAK_DEBUG
+      - key: RENTAL_DEBUG
         value: "false"
-      - key: KAYAK_SECRET_KEY
+      - key: RENTAL_SECRET_KEY
         generateValue: true
-      - key: KAYAK_OWNER_EMAIL
+      - key: RENTAL_OWNER_EMAIL
         sync: false
-      - key: KAYAK_OWNER_PASSWORD
+      - key: RENTAL_OWNER_PASSWORD
         sync: false
-      - key: KAYAK_FROM_EMAIL
+      - key: RENTAL_FROM_EMAIL
         sync: false
-      - key: KAYAK_SMTP_HOST
+      - key: RENTAL_SMTP_HOST
         value: smtp.gmail.com
-      - key: KAYAK_SMTP_PORT
+      - key: RENTAL_SMTP_PORT
         value: "587"
-      - key: KAYAK_SMTP_USE_TLS
+      - key: RENTAL_SMTP_USE_TLS
         value: "true"
-      - key: KAYAK_SMTP_USERNAME
+      - key: RENTAL_SMTP_USERNAME
         sync: false
-      - key: KAYAK_SMTP_PASSWORD
+      - key: RENTAL_SMTP_PASSWORD
         sync: false

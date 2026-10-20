@@ -15,8 +15,8 @@ Open `http://127.0.0.1:5000/`.
 
 Copy `.env.example` to `.env` and fill in:
 
-- `KAYAK_SECRET_KEY` — long random string (`python -c "import secrets; print(secrets.token_urlsafe(32))"`)
-- `KAYAK_OWNER_EMAIL` + `KAYAK_OWNER_PASSWORD` — creates the owner account on first start
+- `RENTAL_SECRET_KEY` — long random string (`python -c "import secrets; print(secrets.token_urlsafe(32))"`)
+- `RENTAL_OWNER_EMAIL` + `RENTAL_OWNER_PASSWORD` — creates the owner account on first start
 - SMTP settings (optional) — for booking confirmation emails; Gmail needs an App Password
 
 ## Owner console
